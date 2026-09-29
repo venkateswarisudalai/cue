@@ -29,6 +29,7 @@ enum Pref {
     static let showSuggestions = "showSuggestions"
     static let autoEnhance = "autoEnhance"
     static let recordAudio = "recordAudio"
+    static let detectMeetings = "detectMeetings"
     static let meetingDefaultApplied = "meetingDefaultApplied"
 
     static let defaultModel = "claude-opus-5"
@@ -48,6 +49,7 @@ enum Pref {
             showSuggestions: false,
             autoEnhance: true,
             recordAudio: false,
+            detectMeetings: true,
         ])
         // Vantage opens as a meeting notepad now; move earlier installs off the old candidate default once.
         if !d.bool(forKey: meetingDefaultApplied) {
