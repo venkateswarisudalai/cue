@@ -37,7 +37,11 @@ and click **Open Anyway**.
 a free local model (Ollama, LM Studio), your own key for OpenRouter, Groq, Gemini, OpenAI,
 Mistral, DeepSeek or Together, any OpenAI-compatible server, or Claude.
 
+**Windows, Linux, ChromeOS:** use the web app at https://venkateswarisudalai.github.io/vantage/ (Chrome or Edge).
+
 ## What's new
+- Saved API keys are visible in Settings (masked, with Show/Hide, Copy, Remove), and the sidebar shows which AI is in use
+- Web app for Windows, Linux, and ChromeOS
 - Use your own AI: free local models (Ollama, LM Studio) or your own key for OpenRouter, Groq, Gemini, OpenAI, Mistral, DeepSeek, Together, or any OpenAI-compatible server
 - Granola-style meeting notepad: your notes + AI-written notes after the call
 - Offers to start listening when a Zoom / Teams / Meet / FaceTime / Slack call begins
