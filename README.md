@@ -7,10 +7,10 @@ A Granola-style meeting notepad for macOS. Vantage transcribes your calls **on y
 **One command** (downloads the latest release into /Applications and opens it):
 
 ```bash
-gh release download -R venkateswarisudalai/cue -p install.sh -O - | bash
+curl -fsSL https://raw.githubusercontent.com/venkateswarisudalai/cue/main/scripts/install.sh | bash
 ```
 
-Needs the [GitHub CLI](https://cli.github.com) logged in (`gh auth login`) with access to this repo. Or download **Vantage.dmg** from [Releases](https://github.com/venkateswarisudalai/cue/releases), open it and drag Vantage into Applications. Vantage isn't notarized yet, so macOS warns the first time you open a downloaded copy: click **Done**, then **System Settings → Privacy & Security → Open Anyway**. The one-command install avoids that warning.
+Run the same command again to update. Or download **Vantage.dmg** from [Releases](https://github.com/venkateswarisudalai/cue/releases), open it and drag Vantage into Applications. Vantage isn't notarized yet, so macOS warns the first time you open a downloaded copy: click **Done**, then **System Settings → Privacy & Security → Open Anyway**. The one-command install avoids that warning.
 
 **You'll need:** an Apple silicon Mac on macOS 26 (Tahoe) or later, plus [Claude Code](https://claude.com/claude-code) logged in *or* an Anthropic API key (Settings → *Anthropic API key*) for notes and suggestions. Transcription works without either.
 
