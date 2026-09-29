@@ -16,8 +16,6 @@ struct SettingsView: View {
     @State private var openAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError = ""
 
-    @State private var apiKey = ""
-    @State private var keySaved = Keychain.read() != nil
     @State private var testOutput = ""
     @State private var testing = false
 
@@ -32,15 +30,7 @@ struct SettingsView: View {
                 if provider == Provider.compatible.rawValue {
                     CompatibleProviderSettings()
                 } else {
-                    HStack {
-                        SecureField("Anthropic API key", text: $apiKey, prompt: Text(keySaved ? "Saved in Keychain" : "sk-ant-…"))
-                        Button(keySaved && apiKey.isEmpty ? "Remove" : "Save") {
-                            Keychain.write(apiKey)
-                            keySaved = Keychain.read() != nil
-                            apiKey = ""
-                        }
-                        .disabled(apiKey.isEmpty && !keySaved)
-                    }
+                    KeyField(label: "Anthropic API key", account: Keychain.apiKeyAccount, placeholder: "sk-ant-…")
 
                     TextField("Claude Code path", text: $cliPath,
                               prompt: Text(ClaudeCLI.locate()?.path ?? "claude not found — enter a path"))
@@ -54,6 +44,7 @@ struct SettingsView: View {
                     .pickerStyle(.segmented)
                 }
 
+                SavedKeysSummary()
                 HStack {
                     Button(testing ? "Testing…" : "Test connection", action: test).disabled(testing)
                     Text(testOutput).font(.caption).foregroundStyle(.secondary).lineLimit(3).textSelection(.enabled)
@@ -141,8 +132,6 @@ struct SettingsView: View {
 private struct CompatibleProviderSettings: View {
     @AppStorage(Pref.compatProvider) private var providerID = "ollama"
     @AppStorage(Pref.compatBaseURL) private var customURL = ""
-    @State private var key = ""
-    @State private var keySaved = false
     @State private var model = ""
     @State private var models: [String] = []
     @State private var loadingModels = false
@@ -169,16 +158,9 @@ private struct CompatibleProviderSettings: View {
             TextField("Server URL", text: $customURL, prompt: Text("http://localhost:8000/v1"))
         }
         if provider.needsKey || isCustom {
-            HStack {
-                SecureField(isCustom ? "API key (if needed)" : "\(provider.name) API key", text: $key,
-                            prompt: Text(keySaved ? "Saved in Keychain" : "Paste your key"))
-                Button(keySaved && key.isEmpty ? "Remove" : "Save") {
-                    Keychain.write(key, account: Keychain.providerAccount(provider.id))
-                    keySaved = Keychain.read(Keychain.providerAccount(provider.id)) != nil
-                    key = ""
-                }
-                .disabled(key.isEmpty && !keySaved)
-            }
+            KeyField(label: isCustom ? "API key (if needed)" : "\(provider.name.components(separatedBy: " (").first ?? provider.name) API key",
+                     account: Keychain.providerAccount(provider.id), placeholder: "Paste your key")
+                .id(provider.id)
         }
         HStack {
             TextField("Model", text: $model, prompt: Text(provider.defaultModel.isEmpty ? "model id" : provider.defaultModel))
@@ -202,8 +184,6 @@ private struct CompatibleProviderSettings: View {
     }
 
     private func reload() {
-        key = ""
-        keySaved = Keychain.read(Keychain.providerAccount(provider.id)) != nil
         model = Pref.d.string(forKey: Pref.compatModelKey(provider.id)) ?? ""
         models = []
         modelsMessage = ""
@@ -217,7 +197,7 @@ private struct CompatibleProviderSettings: View {
         loadingModels = true
         modelsMessage = ""
         let url = baseURL
-        let apiKey = key.isEmpty ? Keychain.read(Keychain.providerAccount(provider.id)) : key
+        let apiKey = Keychain.read(Keychain.providerAccount(provider.id))
         Task {
             do {
                 models = try await CompatibleClient.listModels(baseURL: url, apiKey: apiKey)
@@ -229,6 +209,101 @@ private struct CompatibleProviderSettings: View {
             }
             loadingModels = false
         }
+    }
+}
+
+/// One API key: shows the saved key masked (Show reveals it), and a field to paste a new one
+/// with an eye toggle. Keys live in the login Keychain under com.venka.vantage.
+struct KeyField: View {
+    let label: String
+    let account: String
+    let placeholder: String
+    @State private var draft = ""
+    @State private var saved: String?
+    @State private var revealSaved = false
+    @State private var revealDraft = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let saved {
+                HStack(spacing: 8) {
+                    Text(label)
+                    Spacer()
+                    Text(revealSaved ? saved : Self.mask(saved))
+                        .font(.system(.body, design: .monospaced))
+                        .textSelection(.enabled)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Button(revealSaved ? "Hide" : "Show") { revealSaved.toggle() }
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(saved, forType: .string)
+                    } label: { Image(systemName: "doc.on.doc") }
+                    .help("Copy key")
+                    Button("Remove", role: .destructive) {
+                        Keychain.write("", account: account)
+                        reload()
+                    }
+                }
+                .buttonStyle(.borderless)
+            }
+            HStack {
+                Group {
+                    if revealDraft {
+                        TextField(saved == nil ? label : "Replace key", text: $draft, prompt: Text(placeholder))
+                    } else {
+                        SecureField(saved == nil ? label : "Replace key", text: $draft, prompt: Text(placeholder))
+                    }
+                }
+                .onSubmit(save)
+                Button { revealDraft.toggle() } label: { Image(systemName: revealDraft ? "eye.slash" : "eye") }
+                    .buttonStyle(.borderless)
+                    .help(revealDraft ? "Hide what you're typing" : "Show what you're typing")
+                Button("Save", action: save).disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .onAppear(perform: reload)
+    }
+
+    private func save() {
+        guard !draft.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        Keychain.write(draft, account: account)
+        draft = ""
+        revealDraft = false
+        reload()
+    }
+
+    private func reload() {
+        saved = Keychain.read(account)
+        revealSaved = false
+    }
+
+    /// `sk-ant-api03-…` → `sk-a••••••••9xQf`: enough to recognize, not to use.
+    static func mask(_ key: String) -> String {
+        guard key.count > 8 else { return String(repeating: "•", count: key.count) }
+        return String(key.prefix(4)) + String(repeating: "•", count: 8) + String(key.suffix(4))
+    }
+}
+
+/// Which providers have a key saved, so nobody has to click through each one to find out.
+struct SavedKeysSummary: View {
+    @State private var names: [String] = []
+
+    var body: some View {
+        LabeledContent("Saved keys") {
+            Text(names.isEmpty ? "None yet" : names.joined(separator: ", ")).foregroundStyle(.secondary)
+        }
+        .onAppear(perform: reload)
+        .onReceive(NotificationCenter.default.publisher(for: Keychain.didChange)) { _ in reload() }
+    }
+
+    private func reload() {
+        var found: [String] = []
+        if Keychain.read() != nil { found.append("Anthropic") }
+        for p in CompatibleProvider.all where Keychain.read(Keychain.providerAccount(p.id)) != nil {
+            found.append(p.name.components(separatedBy: " (").first ?? p.name)
+        }
+        names = found
     }
 }
 

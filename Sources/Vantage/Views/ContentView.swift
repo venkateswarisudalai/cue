@@ -61,6 +61,7 @@ private struct Sidebar: View {
         }
         .listStyle(.sidebar)
         .disabled(model.phase != .idle)
+        .safeAreaInset(edge: .bottom) { AIStatus() }
         .safeAreaInset(edge: .top) {
             Button(action: model.newMeeting) {
                 Label("New note", systemImage: "square.and.pencil")
@@ -91,6 +92,45 @@ private struct Sidebar: View {
         add("Previous 7 days", { $0.createdAt > weekAgo }, from: &pool)
         if !pool.isEmpty { out.append(("Earlier", pool)) }
         return out
+    }
+}
+
+/// Which AI writes the notes, and the way into Settings to change it or add a key.
+private struct AIStatus: View {
+    @State private var label = ""
+    @State private var ok = true
+
+    var body: some View {
+        SettingsLink {
+            HStack(spacing: 6) {
+                Image(systemName: ok ? "sparkles" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(ok ? Color.secondary : Color.orange)
+                Text(label).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 4)
+                Image(systemName: "gearshape").foregroundStyle(.secondary)
+            }
+            .font(.caption)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("AI provider and API keys (⌘,)")
+        .padding(.horizontal, 6)
+        .padding(.bottom, 6)
+        .onAppear(perform: refresh)
+        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: Keychain.didChange)) { _ in refresh() }
+    }
+
+    private func refresh() {
+        do {
+            label = "AI: " + (try LLMFactory.make().displayName)
+            ok = true
+        } catch {
+            label = "Set up AI — add a key"
+            ok = false
+        }
     }
 }
 

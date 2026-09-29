@@ -94,6 +94,7 @@ private struct MenuBarMenu: View {
         }
         .disabled(model.phase != .idle && model.phase != .running)
         Button("Open Vantage", action: open)
+        SettingsLink { Text("Settings… (AI & keys)") }
         Divider()
         Toggle("Offer to listen when a call starts", isOn: $detectMeetings)
         Divider()
