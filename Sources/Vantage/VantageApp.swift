@@ -124,8 +124,11 @@ enum SelfTest {
         NSApplication.shared.setActivationPolicy(.prohibited)
         let model = AppModel(loadSaved: false)
         model.loadDemoSession(live: CommandLine.arguments.contains("--live"))
-        let size = NSRect(x: 0, y: 0, width: 1180, height: 760)
-        let host = NSHostingView(rootView: ContentView().environmentObject(model).frame(width: size.width, height: size.height))
+        let settings = CommandLine.arguments.contains("--settings")
+        let size = settings ? NSRect(x: 0, y: 0, width: 520, height: 900) : NSRect(x: 0, y: 0, width: 1180, height: 760)
+        let root = settings ? AnyView(SettingsView().frame(width: size.width, height: size.height))
+            : AnyView(ContentView().environmentObject(model).frame(width: size.width, height: size.height))
+        let host = NSHostingView(rootView: root)
         host.frame = size
         let window = NSWindow(contentRect: size, styleMask: [.titled], backing: .buffered, defer: false)
         let dark = CommandLine.arguments.contains("--dark")

@@ -60,6 +60,6 @@ cat <<'EOF'
 Next:
   1. Press "Start listening" and allow the Microphone and Screen & System Audio Recording
      prompts (quit and reopen Vantage after granting Screen & System Audio Recording).
-  2. For AI notes and suggestions, either install Claude Code and log in (`claude`), or add an
-     Anthropic API key in Vantage → Settings (⌘,).
+  2. For AI notes, open Vantage → Settings (⌘,) → AI and pick one: a free local model
+     (Ollama / LM Studio), your own API key (OpenRouter, Groq, Gemini, OpenAI, …), or Claude.
 EOF

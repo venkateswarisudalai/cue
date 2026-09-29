@@ -496,3 +496,42 @@ import Testing
         #expect(d.update(micUsers: ["com.microsoft.teams2"], listening: false, now: t0.addingTimeInterval(64)) == .started(teams))
     }
 }
+
+@Suite struct CompatibleProviderTests {
+    @Test func parsesChatCompletionStream() {
+        #expect(ChatCompletionsParser.parseSSELine(#"data: {"choices":[{"delta":{"content":"Hi"}}]}"#) == .text("Hi"))
+        #expect(ChatCompletionsParser.parseSSELine(#"data: {"choices":[{"delta":{"role":"assistant"}}]}"#) == nil)
+        #expect(ChatCompletionsParser.parseSSELine(#"data: {"choices":[{"delta":{},"finish_reason":"stop"}]}"#) == .stop(reason: "stop"))
+        #expect(ChatCompletionsParser.parseSSELine("data: [DONE]") == .stop(reason: nil))
+        #expect(ChatCompletionsParser.parseSSELine(": keep-alive") == nil)
+        #expect(ChatCompletionsParser.parseSSELine(#"data: {"error":{"message":"rate limited"}}"#) == .failure("rate limited"))
+    }
+
+    @Test func skipsReasoningDeltas() {
+        #expect(ChatCompletionsParser.parseSSELine(#"data: {"choices":[{"delta":{"reasoning_content":"hmm","content":""}}]}"#) == nil)
+    }
+
+    @Test func buildsEndpointsFromWhateverWasPasted() {
+        for base in ["http://localhost:11434/v1", "http://localhost:11434/v1/", "http://localhost:11434/v1/chat/completions"] {
+            #expect(CompatibleProvider.endpoint(base: base, path: "/chat/completions")?.absoluteString
+                    == "http://localhost:11434/v1/chat/completions")
+        }
+        #expect(CompatibleProvider.endpoint(base: "", path: "/models") == nil)
+        #expect(CompatibleProvider.endpoint(base: "ftp://x", path: "/models") == nil)
+    }
+
+    @Test func presetsAreConsistent() {
+        #expect(Set(CompatibleProvider.all.map(\.id)).count == CompatibleProvider.all.count)
+        #expect(CompatibleProvider.find("ollama").isLocal && !CompatibleProvider.find("ollama").needsKey)
+        #expect(CompatibleProvider.find("groq").needsKey && !CompatibleProvider.find("groq").isLocal)
+        #expect(CompatibleProvider.find("nope").id == "ollama")
+        for p in CompatibleProvider.all where p.id != "custom" {
+            #expect(CompatibleProvider.endpoint(base: p.baseURL, path: "/chat/completions") != nil, "\(p.id)")
+        }
+    }
+
+    @Test func readsModelLists() {
+        let body = Data(#"{"object":"list","data":[{"id":"qwen3:8b"},{"id":"llama3.2"}]}"#.utf8)
+        #expect(ChatCompletionsParser.modelIDs(fromBody: body) == ["llama3.2", "qwen3:8b"])
+    }
+}

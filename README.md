@@ -12,7 +12,16 @@ curl -fsSL https://raw.githubusercontent.com/venkateswarisudalai/cue/main/script
 
 Run the same command again to update. Or download **Vantage.dmg** from [Releases](https://github.com/venkateswarisudalai/cue/releases), open it and drag Vantage into Applications. Vantage isn't notarized yet, so macOS warns the first time you open a downloaded copy: click **Done**, then **System Settings → Privacy & Security → Open Anyway**. The one-command install avoids that warning.
 
-**You'll need:** an Apple silicon Mac on macOS 26 (Tahoe) or later, plus [Claude Code](https://claude.com/claude-code) logged in *or* an Anthropic API key (Settings → *Anthropic API key*) for notes and suggestions. Transcription works without either.
+**You'll need:** an Apple silicon Mac on macOS 26 (Tahoe) or later. For AI notes and suggestions, pick any one AI source in **Settings → AI** (transcription works without one):
+
+| Option | Cost | Setup |
+|---|---|---|
+| **Ollama** or **LM Studio**: an open model on your Mac | Free; nothing leaves your Mac | Install [Ollama](https://ollama.com/download), run `ollama pull llama3.2`, choose *Other provider → Ollama* |
+| **Your own API key**: OpenRouter, Groq, Google Gemini, OpenAI, Mistral, DeepSeek, Together | Their pricing (Groq and Gemini have free tiers) | Choose *Other provider*, pick the service, paste your key, press *Load models* |
+| **Any OpenAI-compatible server** (vLLM, llama.cpp, LiteLLM, a company gateway) | Yours | *Other provider → Custom*, enter its URL |
+| **Claude**: [Claude Code](https://claude.com/claude-code) login or an Anthropic API key | Your plan / API pricing | Log in to Claude Code, or paste the key |
+
+Keys are stored in your Mac's Keychain and sent only to the provider you choose. Bigger models write better notes; small local models work but are less thorough.
 
 **First run:** press **Start listening** and allow **Microphone** and **Screen & System Audio Recording** (the second lets Vantage hear the other side of calls; quit and reopen Vantage after granting it). Allow notifications so Vantage can offer to start when a call begins.
 
@@ -29,8 +38,9 @@ Run the same command again to update. Or download **Vantage.dmg** from [Releases
 ## Requirements
 
 - macOS 26 (Tahoe) or later on Apple silicon — uses Apple's on-device `SpeechAnalyzer`.
-- One AI backend:
-  - an **Anthropic API key** (Settings → *Anthropic API key*, stored in Keychain; `ANTHROPIC_API_KEY` also works), or
+- One AI backend (optional for transcription):
+  - **Other provider or local model**: any OpenAI-compatible `/chat/completions` API (presets for Ollama, LM Studio, OpenRouter, Groq, Together, Gemini, OpenAI, Mistral, DeepSeek, or a custom URL). Keys live in Keychain; `VANTAGE_PROVIDER_KEY` also works.
+  - an **Anthropic API key** (stored in Keychain; `ANTHROPIC_API_KEY` also works), or
   - **Claude Code** installed and logged in — Vantage runs `claude -p` with tools, MCP, and settings disabled. No key needed.
 - Xcode 26 / Swift 6.2 to build.
 

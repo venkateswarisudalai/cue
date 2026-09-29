@@ -3,13 +3,14 @@ import Foundation
 import Security
 
 enum Provider: String, CaseIterable, Identifiable {
-    case auto, api, cli
+    case auto, api, cli, compatible
     var id: String { rawValue }
     var title: String {
         switch self {
         case .auto: "Automatic"
         case .api: "Anthropic API key"
         case .cli: "Claude Code login"
+        case .compatible: "Other provider or local model"
         }
     }
 }
@@ -30,6 +31,24 @@ enum Pref {
     static let autoEnhance = "autoEnhance"
     static let recordAudio = "recordAudio"
     static let detectMeetings = "detectMeetings"
+    /// Which `CompatibleProvider` the "Other provider" option uses.
+    static let compatProvider = "compatProvider"
+    static let compatBaseURL = "compatBaseURL"
+    static func compatModelKey(_ id: String) -> String { "compatModel.\(id)" }
+
+    static var compatible: CompatibleProvider {
+        CompatibleProvider.find(d.string(forKey: compatProvider) ?? "ollama")
+    }
+    /// The preset's URL, or the one typed in for a custom server.
+    static var compatibleBaseURL: String {
+        let p = compatible
+        return p.id == CompatibleProvider.custom.id ? (d.string(forKey: compatBaseURL) ?? "") : p.baseURL
+    }
+    static var compatibleModel: String {
+        let p = compatible
+        let m = d.string(forKey: compatModelKey(p.id))?.trimmingCharacters(in: .whitespaces) ?? ""
+        return m.isEmpty ? p.defaultModel : m
+    }
     static let meetingDefaultApplied = "meetingDefaultApplied"
 
     static let defaultModel = "claude-opus-5"
@@ -50,6 +69,7 @@ enum Pref {
             autoEnhance: true,
             recordAudio: false,
             detectMeetings: true,
+            compatProvider: "ollama",
         ])
         // Vantage opens as a meeting notepad now; move earlier installs off the old candidate default once.
         if !d.bool(forKey: meetingDefaultApplied) {
@@ -70,6 +90,7 @@ enum Pref {
 enum Keychain {
     static let service = "com.venka.vantage"
     static let apiKeyAccount = "anthropic-api-key"
+    static func providerAccount(_ id: String) -> String { "provider-key.\(id)" }
 
     static func read(_ account: String = apiKeyAccount, service: String = service) -> String? {
         let query: [String: Any] = [
@@ -178,9 +199,21 @@ enum LLMFactory {
         Keychain.read() ?? ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"].flatMap { $0.isEmpty ? nil : $0 }
     }
 
+    static func makeCompatible() throws -> LLMClient {
+        let p = Pref.compatible
+        let key = Keychain.read(Keychain.providerAccount(p.id))
+            ?? ProcessInfo.processInfo.environment["VANTAGE_PROVIDER_KEY"].flatMap { $0.isEmpty ? nil : $0 }
+        if p.needsKey && key == nil { throw LLMError.failed("Add your \(p.name) API key in Settings (⌘,).") }
+        let model = Pref.compatibleModel
+        guard !model.isEmpty else { throw LLMError.failed("Choose a model for \(p.name) in Settings (⌘,).") }
+        return CompatibleClient(provider: p, baseURL: Pref.compatibleBaseURL, apiKey: key, model: model)
+    }
+
     static func make() throws -> LLMClient {
         let model = Pref.currentModel
         switch Provider(rawValue: Pref.d.string(forKey: Pref.provider) ?? "") ?? .auto {
+        case .compatible:
+            return try makeCompatible()
         case .api:
             guard let key = apiKey else { throw LLMError.missingKey }
             return AnthropicAPIClient(apiKey: key, model: model)
@@ -190,6 +223,8 @@ enum LLMFactory {
         case .auto:
             if let key = apiKey { return AnthropicAPIClient(apiKey: key, model: model) }
             if let url = ClaudeCLI.locate() { return ClaudeCLIClient(executable: url, model: model) }
+            // A provider the user set up with a key (local servers need an explicit choice).
+            if Pref.compatible.needsKey, let client = try? makeCompatible() { return client }
             throw LLMError.noBackend
         }
     }

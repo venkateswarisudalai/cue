@@ -26,6 +26,12 @@
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <!-- Local model servers (Ollama, LM Studio) speak plain http on localhost / the LAN. -->
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
     <key>NSMicrophoneUsageDescription</key>
     <string>Vantage transcribes what you say, on this Mac, so it can suggest answers and questions.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
