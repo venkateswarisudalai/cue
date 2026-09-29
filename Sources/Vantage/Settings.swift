@@ -107,7 +107,11 @@ enum Keychain {
         return value.isEmpty ? nil : value
     }
 
+    /// Posted after a key is saved or removed.
+    static let didChange = Notification.Name("VantageKeychainDidChange")
+
     static func write(_ value: String, account: String = apiKeyAccount) {
+        defer { NotificationCenter.default.post(name: didChange, object: nil) }
         let base: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
