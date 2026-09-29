@@ -9,7 +9,9 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 VERSION="$(node -p "require('@playwright/test/package.json').version")"
 
-docker run --rm --add-host=host.docker.internal:host-gateway \
+TARGET="${BASE_URL:-http://localhost:4173/cue/}"   # or the live site: BASE_URL=https://venkateswarisudalai.github.io/cue/
+
+docker run --rm --add-host=host.docker.internal:host-gateway -e BASE_URL="$TARGET" \
   -v "$PWD/e2e:/work/e2e:ro" -v "$PWD/playwright.config.ts:/work/playwright.config.ts:ro" \
   -w /work "mcr.microsoft.com/playwright:v${VERSION}-noble" bash -c "
     set -e
@@ -19,5 +21,5 @@ docker run --rm --add-host=host.docker.internal:host-gateway \
     # and the Ollama preset's localhost URL works unchanged.
     node e2e/linux/forward.mjs 4173 8178 11434 &
     sleep 1
-    BASE_URL=http://localhost:4173/cue/ npx playwright test --output /tmp/results
+    npx playwright test --output /tmp/results
   "
