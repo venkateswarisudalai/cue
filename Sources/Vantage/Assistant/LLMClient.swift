@@ -1,4 +1,4 @@
-import CueCore
+import VantageCore
 import Foundation
 
 enum LLMError: LocalizedError {
@@ -92,7 +92,7 @@ struct AnthropicAPIClient: LLMClient {
     }
 }
 
-/// Runs `claude -p` so Cue can use an existing Claude Code login with no API key.
+/// Runs `claude -p` so Vantage can use an existing Claude Code login with no API key.
 /// Tools, MCP servers, settings, and session history are all disabled for these calls.
 struct ClaudeCLIClient: LLMClient {
     let executable: URL

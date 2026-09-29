@@ -10,14 +10,15 @@ enum CaptureError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .screenRecordingDenied: "Screen & System Audio Recording permission is off."
-        case .microphoneDenied: "Microphone access is off. Enable Cue in System Settings → Privacy & Security → Microphone."
+        case .microphoneDenied: "Microphone access is off. Enable Vantage in System Settings → Privacy & Security → Microphone."
         case .noMicrophone: "No microphone input is available."
         case .noDisplay: "No display found for capturing call audio."
         }
     }
 }
 
-typealias BufferHandler = (AVAudioPCMBuffer) -> Void
+/// The buffer and the host-clock time (seconds) of its first sample.
+typealias BufferHandler = (AVAudioPCMBuffer, TimeInterval) -> Void
 
 /// The user's own voice.
 final class MicCapture {
@@ -32,8 +33,9 @@ final class MicCapture {
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { throw CaptureError.noMicrophone }
-        input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
-            self?.onBuffer?(buffer)
+        input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, when in
+            let host = when.isHostTimeValid ? AVAudioTime.seconds(forHostTime: when.hostTime) : HostClock.now
+            self?.onBuffer?(buffer, host)
         }
         engine.prepare()
         try engine.start()
@@ -49,7 +51,7 @@ final class MicCapture {
 /// Uses ScreenCaptureKit, so macOS asks for Screen & System Audio Recording permission.
 final class SystemAudioCapture: NSObject, SCStreamOutput, SCStreamDelegate {
     private var stream: SCStream?
-    private let queue = DispatchQueue(label: "cue.system-audio")
+    private let queue = DispatchQueue(label: "vantage.system-audio")
     var onBuffer: BufferHandler?
     var onStopped: ((Error) -> Void)?
 
@@ -82,7 +84,10 @@ final class SystemAudioCapture: NSObject, SCStreamOutput, SCStreamDelegate {
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .audio, sampleBuffer.isValid, let pcm = sampleBuffer.copyPCMBuffer() else { return }
-        onBuffer?(pcm)
+        // ScreenCaptureKit stamps audio on the host clock; fall back to arrival time if that ever changes.
+        let pts = sampleBuffer.presentationTimeStamp.seconds
+        let now = HostClock.now
+        onBuffer?(pcm, pts.isFinite && abs(now - pts) < 5 ? pts : now)
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {

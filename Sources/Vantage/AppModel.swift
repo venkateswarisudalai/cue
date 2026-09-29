@@ -1,12 +1,12 @@
 import AVFoundation
 import CoreGraphics
-import CueCore
+import VantageCore
 import OSLog
 import SwiftUI
 
-/// `log show --info --predicate 'subsystem == "com.venka.cue"' --last 10m`
+/// `log show --info --predicate 'subsystem == "com.venka.vantage"' --last 10m`
 /// Events only — transcript text is never logged.
-private let log = Logger(subsystem: "com.venka.cue", category: "session")
+private let log = Logger(subsystem: "com.venka.vantage", category: "session")
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -18,8 +18,20 @@ final class AppModel: ObservableObject {
     }
 
     @Published var phase: Phase = .idle
-    @Published private(set) var utterances: [Utterance] = []
+    @Published private(set) var meetings: [Meeting] = []
+    /// The open note. Edits autosave; while listening, the transcript streams into it.
+    @Published var current: Meeting {
+        didSet {
+            guard current != oldValue else { return }
+            if current.id == oldValue.id { scheduleSave() }
+            if current.mode != oldValue.mode {
+                Pref.d.set(current.mode.rawValue, forKey: Pref.mode)
+                contextNotes = Pref.d.string(forKey: Pref.notesKey(current.mode)) ?? ""
+            }
+        }
+    }
     @Published private(set) var partial: [Speaker: String] = [:]
+    @Published private(set) var enhancing = false
     @Published private(set) var cues: [CueCard] = []
     @Published private(set) var micLevel: Float = 0
     @Published private(set) var callLevel: Float = 0
@@ -28,14 +40,14 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastSavedURL: URL?
     @Published var errorMessage: String?
 
-    @Published var mode: Mode {
-        didSet {
-            Pref.d.set(mode.rawValue, forKey: Pref.mode)
-            notes = Pref.d.string(forKey: Pref.notesKey(mode)) ?? ""
-        }
+    var mode: Mode {
+        get { current.mode }
+        set { current.mode = newValue }
     }
-    @Published var notes: String {
-        didSet { Pref.d.set(notes, forKey: Pref.notesKey(mode)) }
+    var utterances: [Utterance] { current.utterances }
+    /// Background for suggestions and notes (résumé, agenda, account notes). Saved per mode.
+    @Published var contextNotes: String {
+        didSet { Pref.d.set(contextNotes, forKey: Pref.notesKey(current.mode)) }
     }
 
     private var assembler = TranscriptAssembler()
@@ -45,19 +57,176 @@ final class AppModel: ObservableObject {
     private var system: SystemAudioCapture?
     private var micTranscriber: LiveTranscriber?
     private var callTranscriber: LiveTranscriber?
-    private var evaluationTask: Task<Void, Never>?
-    private var lastEvaluated: (id: UUID, text: String)?
     private var cueTasks: [UUID: Task<Void, Never>] = [:]
+    /// Set while listening with recording on.
+    private var recorder: MeetingRecorder?
+    @Published private(set) var isRecording = false
+    private var saveTask: Task<Void, Never>?
+    private var enhanceTask: Task<Void, Never>?
+    private var exported: [UUID: URL] = [:]
 
-    init() {
+    /// Off for self-tests, so they never touch saved meetings.
+    private let persistent: Bool
+
+    init(loadSaved: Bool = true) {
         Pref.register()
-        let m = Mode(rawValue: Pref.d.string(forKey: Pref.mode) ?? "") ?? .candidate
-        mode = m
-        notes = Pref.d.string(forKey: Pref.notesKey(m)) ?? ""
+        persistent = loadSaved
+        let m = Mode(rawValue: Pref.d.string(forKey: Pref.mode) ?? "") ?? .meeting
+        contextNotes = Pref.d.string(forKey: Pref.notesKey(m)) ?? ""
+        let saved = loadSaved ? MeetingStore.loadAll() : []
+        // Reopen an untouched note rather than piling up blank ones.
+        if let blank = saved.first, blank.isEmpty {
+            current = blank
+            meetings = saved
+        } else {
+            current = Meeting(mode: m)
+            meetings = [current] + saved
+        }
     }
 
     var isRunning: Bool { phase == .running }
     var hasTranscript: Bool { !utterances.isEmpty }
+    var suggestionsOn: Bool { Pref.d.bool(forKey: Pref.showSuggestions) }
+
+    // MARK: - Meetings
+
+    func newMeeting() {
+        guard phase == .idle else { return }
+        flushSave()
+        if current.isEmpty { return }
+        let m = Meeting(mode: current.mode)
+        meetings.insert(m, at: 0)
+        select(m.id)
+    }
+
+    func select(_ id: UUID) {
+        guard phase == .idle, id != current.id, let m = meetings.first(where: { $0.id == id }) else { return }
+        flushSave()
+        enhanceTask?.cancel()
+        enhancing = false
+        cues.forEach { cancelCue($0.id) }
+        cues = []
+        lastSavedURL = nil
+        errorMessage = nil
+        // Drop the blank note we're leaving.
+        if current.isEmpty { meetings.removeAll { $0.id == current.id } }
+        current = m
+    }
+
+    func deleteMeeting(_ id: UUID) {
+        guard !(isRunning && id == current.id) else { return }
+        meetings.removeAll { $0.id == id }
+        if persistent {
+            MeetingStore.delete(id)
+            try? FileManager.default.removeItem(at: MeetingRecorder.folder(for: id))
+        }
+        if id == current.id {
+            saveTask?.cancel()
+            enhanceTask?.cancel()
+            enhancing = false
+            cues = []
+            current = meetings.first ?? Meeting(mode: current.mode)
+            if meetings.isEmpty { meetings = [current] }
+        }
+    }
+
+    private func scheduleSave() {
+        if let i = meetings.firstIndex(where: { $0.id == current.id }) { meetings[i] = current }
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            self?.persist()
+        }
+    }
+
+    private func flushSave() {
+        saveTask?.cancel()
+        persist()
+    }
+
+    private func persist() {
+        guard persistent, !current.isEmpty else { return }
+        do { try MeetingStore.save(current) } catch {
+            log.error("save failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func export() {
+        guard persistent, Pref.d.bool(forKey: Pref.saveSessions), !current.utterances.isEmpty else { return }
+        do {
+            let url = try SessionExporter.save(current, cues: cues)
+            if let old = exported[current.id], old != url { try? FileManager.default.removeItem(at: old) }
+            exported[current.id] = url
+            lastSavedURL = url
+        } catch {
+            errorMessage = "Couldn't save the session: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Enhanced notes
+
+    /// Streams Claude's write-up of the user's notes + transcript into the meeting.
+    func generateNotes() {
+        guard !enhancing, hasTranscript || !current.userNotes.isEmpty else { return }
+        let client: LLMClient
+        do { client = try LLMFactory.make() } catch {
+            errorMessage = error.localizedDescription
+            return
+        }
+        let id = current.id
+        let system = PromptBuilder.notesSystem(mode: current.mode, contextNotes: contextNotes)
+        let user = PromptBuilder.notesUser(title: current.title, userNotes: current.userNotes, utterances: current.utterances)
+        let effort = Pref.d.string(forKey: Pref.effort) == "high" ? "high" : "medium"
+        let previous = current.enhancedNotes
+        enhancing = true
+        current.enhancedNotes = ""
+        log.notice("notes requested via \(client.displayName, privacy: .public)")
+        enhanceTask = Task { [weak self] in
+            var text = ""
+            do {
+                for try await chunk in client.stream(system: system, user: user, effort: effort) {
+                    text += chunk
+                    guard let self, self.current.id == id else { return }
+                    self.current.enhancedNotes = text
+                }
+                guard let self, self.current.id == id else { return }
+                self.finishNotes(text)
+            } catch {
+                guard let self else { return }
+                if self.current.id == id {
+                    self.enhancing = false
+                    if text.isEmpty { self.current.enhancedNotes = previous }
+                }
+                if !(error is CancellationError) && !Task.isCancelled {
+                    log.error("notes failed: \(error.localizedDescription, privacy: .public)")
+                    self.errorMessage = "Couldn't write notes: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    func cancelNotes() {
+        enhanceTask?.cancel()
+        enhancing = false
+    }
+
+    private func finishNotes(_ text: String) {
+        enhancing = false
+        var body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // The first "# heading" is Claude's title; use it if the user didn't name the meeting.
+        if let title = Meeting.suggestedTitle(fromNotes: body) {
+            if current.title.trimmingCharacters(in: .whitespaces).isEmpty { current.title = title }
+            if let firstBreak = body.firstIndex(of: "\n") {
+                body = String(body[firstBreak...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                body = ""
+            }
+        }
+        current.enhancedNotes = body
+        flushSave()
+        export()
+    }
 
     // MARK: - Session
 
@@ -88,6 +257,14 @@ final class AppModel: ObservableObject {
                 Task { @MainActor in self.phase = .preparing("Downloading speech model… \(Int(fraction * 100))%") }
             }
             resetSession()
+            if Pref.d.bool(forKey: Pref.recordAudio) {
+                do {
+                    recorder = try MeetingRecorder(meeting: current.id)
+                    isRecording = true
+                } catch {
+                    errorMessage = "Couldn't start recording (\(error.localizedDescription)). Transcribing without it."
+                }
+            }
 
             if wantCall {
                 phase = .preparing("Starting call audio…")
@@ -113,6 +290,8 @@ final class AppModel: ObservableObject {
         } catch {
             log.error("start failed: \(error.localizedDescription, privacy: .public)")
             await teardown()
+            recorder = nil
+            isRecording = false
             errorMessage = error.localizedDescription
             phase = .idle
         }
@@ -121,42 +300,61 @@ final class AppModel: ObservableObject {
     func stop() async {
         guard phase == .running else { return }
         phase = .stopping
-        evaluationTask?.cancel()
         await teardown()
         // Let finalized fragments and held mic lines land before saving.
         try? await Task.sleep(for: .seconds(echoGate.hold + 0.3))
+        await finishRecording()
         phase = .idle
+        if let start = sessionStart { current.duration += Date().timeIntervalSince(start) }
         log.notice("stopped: \(self.utterances.count) utterances, \(self.cues.count) cues")
-        if Pref.d.bool(forKey: Pref.saveSessions), let start = sessionStart, !utterances.isEmpty {
-            do {
-                lastSavedURL = try SessionExporter.save(mode: mode, startedAt: start, utterances: utterances, cues: cues)
-            } catch {
-                errorMessage = "Couldn't save the session: \(error.localizedDescription)"
-            }
+        flushSave()
+        export()
+        if Pref.d.bool(forKey: Pref.autoEnhance), hasTranscript, (try? LLMFactory.make()) != nil {
+            generateNotes()
         }
+    }
+
+    private func finishRecording() async {
+        guard let recorder else { return }
+        self.recorder = nil
+        isRecording = false
+        phase = .preparing("Saving recording…")
+        do {
+            if let r = try await recorder.finish() {
+                current.recordings.append(r)
+                log.notice("recording saved: \(Int(r.duration))s")
+            }
+        } catch {
+            log.error("recording failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = "Couldn't save the recording: \(error.localizedDescription)"
+        }
+    }
+
+    func recordingURL(_ r: Recording) -> URL {
+        MeetingRecorder.folder(for: current.id).appendingPathComponent(r.file)
     }
 
     private func resetSession() {
         cueTasks.values.forEach { $0.cancel() }
         cueTasks.removeAll()
-        assembler.reset()
+        // Listening again on the same note continues its transcript.
+        assembler.load(current.utterances)
         trigger.reset()
         echoGate.reset()
-        utterances = []
         partial = [:]
-        cues = []
-        lastEvaluated = nil
         lastSavedURL = nil
         sessionStart = Date()
     }
 
     private func startMic(locale: Locale, speaker: Speaker) async throws {
         let transcriber = makeTranscriber(for: speaker)
-        try await transcriber.start(locale: locale, vocabulary: Vocabulary.terms(from: notes))
+        try await transcriber.start(locale: locale, vocabulary: Vocabulary.terms(from: contextNotes + "\n" + current.userNotes))
         let capture = MicCapture()
         let meter = LevelThrottle()
-        capture.onBuffer = { [weak self] buffer in
-            transcriber.feed(buffer)
+        let track = recorder?.mic
+        capture.onBuffer = { [weak self] buffer, host in
+            transcriber.feed(buffer, at: host)
+            track?.write(buffer, at: host)
             if let level = meter.next(buffer) { Task { @MainActor in self?.micLevel = level } }
         }
         try capture.start()
@@ -170,11 +368,13 @@ final class AppModel: ObservableObject {
             throw CaptureError.screenRecordingDenied
         }
         let transcriber = makeTranscriber(for: .them)
-        try await transcriber.start(locale: locale, vocabulary: Vocabulary.terms(from: notes))
+        try await transcriber.start(locale: locale, vocabulary: Vocabulary.terms(from: contextNotes + "\n" + current.userNotes))
         let capture = SystemAudioCapture()
         let meter = LevelThrottle()
-        capture.onBuffer = { [weak self] buffer in
-            transcriber.feed(buffer)
+        let track = recorder?.call
+        capture.onBuffer = { [weak self] buffer, host in
+            transcriber.feed(buffer, at: host)
+            track?.write(buffer, at: host)
             if let level = meter.next(buffer) { Task { @MainActor in self?.callLevel = level } }
         }
         capture.onStopped = { [weak self] error in
@@ -197,8 +397,8 @@ final class AppModel: ObservableObject {
 
     private func callAudioHelp(_ error: Error) -> String {
         if case CaptureError.screenRecordingDenied = error {
-            return "Call audio is off — Cue needs Screen & System Audio Recording permission to hear the other side. "
-                + "Enable Cue in System Settings → Privacy & Security, then quit and reopen Cue. Transcribing your mic only for now."
+            return "Call audio is off — Vantage needs Screen & System Audio Recording permission to hear the other side. "
+                + "Enable Vantage in System Settings → Privacy & Security, then quit and reopen Vantage. Transcribing your mic only for now."
         }
         return "Call audio couldn't start (\(error.localizedDescription)). Transcribing your mic only for now."
     }
@@ -208,8 +408,9 @@ final class AppModel: ObservableObject {
         t.onVolatile = { [weak self] text in
             Task { @MainActor in self?.handleVolatile(text, from: speaker) }
         }
-        t.onFinal = { [weak self] text in
-            Task { @MainActor in self?.handleFinal(text, from: speaker) }
+        t.onFinal = { [weak self] text, spokenHost in
+            let spoken = spokenHost.map(HostClock.date)
+            Task { @MainActor in self?.handleFinal(text, from: speaker, spokenAt: spoken) }
         }
         return t
     }
@@ -238,15 +439,12 @@ final class AppModel: ObservableObject {
             return
         }
         partial[speaker] = text
-        if mode == .interviewer, speaker.isOtherParty, text.split(separator: " ").count >= 2 {
-            evaluationTask?.cancel()
-        }
     }
 
     /// Debug hook for `--selftest-simulate`. Includes transcript text, so it never goes to the system log.
     var trace: ((String) -> Void)?
 
-    private func handleFinal(_ text: String, from speaker: Speaker) {
+    private func handleFinal(_ text: String, from speaker: Speaker, spokenAt: Date? = nil) {
         partial[speaker] = nil
         let now = Date()
         trace?("final \(speaker.rawValue): \(text)")
@@ -273,7 +471,7 @@ final class AppModel: ObservableObject {
                     return
                 }
                 self.trace?("  mic #\(id) shown")
-                if let utteranceID = self.commit(held.text, from: .you, at: held.at) {
+                if let utteranceID = self.commit(held.text, from: .you, at: held.at, spokenAt: spokenAt) {
                     self.echoGate.didShowMic(held.text, utterance: utteranceID, at: held.at)
                 }
             }
@@ -286,26 +484,22 @@ final class AppModel: ObservableObject {
             let retractions = echoGate.takeRetractions()
             if !retractions.isEmpty {
                 for r in retractions { assembler.removeFragment(r.text, from: r.utterance) }
-                utterances = assembler.utterances
+                current.utterances = assembler.utterances
                 trace?("  retracted \(retractions.count) shown mic fragments")
                 log.info("retracted \(retractions.count) mic echo fragments")
             }
         }
-        commit(text, from: speaker, at: now)
+        commit(text, from: speaker, at: now, spokenAt: spokenAt)
     }
 
     @discardableResult
-    private func commit(_ text: String, from speaker: Speaker, at time: Date) -> UUID? {
-        guard let id = assembler.appendFinal(text, from: speaker, at: time) else { return nil }
-        utterances = assembler.utterances
-        guard speaker.isOtherParty, Pref.d.bool(forKey: Pref.autoRespond) else { return id }
+    private func commit(_ text: String, from speaker: Speaker, at time: Date, spokenAt: Date? = nil) -> UUID? {
+        guard let id = assembler.appendFinal(text, from: speaker, at: time, spokenAt: spokenAt) else { return nil }
+        current.utterances = assembler.utterances
+        guard speaker.isOtherParty, suggestionsOn, Pref.d.bool(forKey: Pref.autoRespond) else { return id }
 
-        if mode == .interviewer {
-            scheduleEvaluation(of: id)
-        } else {
-            let turn = assembler.utterances.last(where: { $0.id == id })?.text ?? text
-            handle(trigger.otherPartyFinal(fragment: text, turn: turn))
-        }
+        let turn = assembler.utterances.last(where: { $0.id == id })?.text ?? text
+        handle(trigger.otherPartyFinal(fragment: text, turn: turn))
         return id
     }
 
@@ -327,20 +521,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Interviewer mode: assess the candidate once they finish a substantial answer.
-    private func scheduleEvaluation(of id: UUID) {
-        evaluationTask?.cancel()
-        evaluationTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1.5))
-            guard !Task.isCancelled, let self,
-                  let u = self.assembler.utterances.last(where: { $0.speaker.isOtherParty }), u.id == id,
-                  u.text.split(separator: " ").count >= 25 else { return }
-            if let last = self.lastEvaluated, last.id == u.id, last.text == u.text { return }
-            self.lastEvaluated = (u.id, u.text)
-            self.requestCue(.respond, focus: u, isAuto: true)
-        }
-    }
-
     // MARK: - Cues
 
     func requestCue(_ kind: CueKind, focus: Utterance? = nil, customQuestion: String? = nil, isAuto: Bool = false) {
@@ -357,7 +537,7 @@ final class AppModel: ObservableObject {
         let target = kind == .respond
             ? (focus ?? assembler.lastOtherPartyUtterance ?? assembler.utterances.last)
             : focus
-        let system = PromptBuilder.system(mode: mode, contextNotes: notes)
+        let system = PromptBuilder.system(mode: mode, contextNotes: contextNotes)
         let user = PromptBuilder.userMessage(kind: kind, mode: mode, utterances: assembler.utterances,
                                              focus: target, customQuestion: customQuestion)
         let effort = Pref.d.string(forKey: Pref.effort) ?? "low"
@@ -411,7 +591,7 @@ final class AppModel: ObservableObject {
     // MARK: - Test harness
 
     /// Plays an audio file through the pipeline as call audio, paced in real time
-    /// (`Cue --selftest-simulate clip.wav [--echo]`). With `echo`, the same audio is also fed
+    /// (`Vantage --selftest-simulate clip.wav [--echo]`). With `echo`, the same audio is also fed
     /// as the mic, reproducing laptop speakers leaking into the microphone.
     func runSimulation(file: URL, echo: Bool) async throws {
         let locale = try await LiveTranscriber.prepareAssets(locale: Locale(identifier: "en-US"))
@@ -445,38 +625,61 @@ final class AppModel: ObservableObject {
         phase = .idle
     }
 
-    /// Sample conversation for UI snapshots (`Cue --selftest-snapshot out.png`).
-    func loadDemoSession() {
-        let t0 = Date().addingTimeInterval(-95)
-        assembler.reset()
-        assembler.appendFinal("Thanks for making the time today.", from: .them, at: t0)
-        assembler.appendFinal("Of course, glad to be here.", from: .you, at: t0.addingTimeInterval(4))
-        assembler.appendFinal("So to start, can you walk me through how you migrated your workloads off Porter, and what went wrong along the way?",
-                              from: .them, at: t0.addingTimeInterval(9))
-        utterances = assembler.utterances
-        partial = [.you: "Sure, so the first thing we did was"]
-        sessionStart = t0
-        callAudioActive = true
-        micLevel = 0.7
-        callLevel = 0.3
-        phase = .running
+    /// Sample meeting for UI snapshots (`Vantage --selftest-snapshot out.png [--live]`).
+    func loadDemoSession(live: Bool) {
+        let t0 = Date().addingTimeInterval(-1260)
+        var a = TranscriptAssembler()
+        let lines: [(String, Speaker, TimeInterval)] = [
+            ("Okay, let's get going. Main thing today is the EKS cutover for the payments service.", .them, 0),
+            ("Staging has been on the new cluster for two weeks and error rates look flat.", .you, 8),
+            ("Good. What's blocking prod? Is it still the secrets rotation?", .them, 16),
+            ("Mostly that, plus the SOC 2 evidence for the change window. I can have both by Thursday.", .you, 22),
+            ("Great. Let's plan the cutover for next Tuesday and keep Porter warm for a week as rollback.", .them, 31),
+        ]
+        for (text, speaker, at) in lines {
+            a.appendFinal(text, from: speaker, at: t0.addingTimeInterval(at + 3), spokenAt: t0.addingTimeInterval(at))
+        }
+        current = Meeting(title: "Payments EKS cutover", createdAt: t0, mode: .meeting,
+                          userNotes: "payments → EKS\nblocker: secrets rotation\nSOC2 evidence??",
+                          utterances: a.utterances, duration: 1260,
+                          recordings: [Recording(file: "demo.m4a", startedAt: t0, duration: 1260)])
+        meetings = [current,
+                    Meeting(title: "Platform weekly", createdAt: t0.addingTimeInterval(-86_400), mode: .meeting, userNotes: "x"),
+                    Meeting(title: "Acme renewal", createdAt: t0.addingTimeInterval(-4 * 86_400), mode: .sales, userNotes: "x")]
+        assembler.load(a.utterances)
+        if live {
+            partial = [.them: "And who owns the runbook for"]
+            sessionStart = Date().addingTimeInterval(-1260)
+            callAudioActive = true
+            micLevel = 0.6
+            callLevel = 0.4
+            phase = .running
+            var ask = CueCard(kind: .ask, title: CueKind.ask.title(for: .meeting), quote: nil, isAuto: false)
+            ask.text = """
+            1. Who signs off on the cutover on Tuesday? — pins an owner
+            2. What's the rollback trigger — error rate or latency? — makes "keep Porter warm" concrete
+            3. Does the SOC 2 evidence need the change ticket first? — avoids a Thursday surprise
+            """
+            ask.state = .done
+            cues = [ask]
+        } else {
+            current.enhancedNotes = """
+            ### Payments service → EKS
+            - Staging has run on the new cluster for **two weeks**; error rates flat
+            - Prod cutover planned for **next Tuesday**
+            - Porter stays warm for **one week** as the rollback path
 
-        var answer = CueCard(kind: .respond, title: CueKind.respond.title(for: mode),
-                             quote: utterances.last?.text, isAuto: true)
-        answer.text = """
-        **Say:** "We moved [N] services from Porter to a self-managed EKS cluster over [timeframe]. \
-        I ran both platforms side by side and cut traffic over service by service, so every step had a rollback. \
-        The **biggest surprise was [what broke]**, and we fixed it by [fix]."
+            ### Blockers
+            - Secrets rotation still open
+            - SOC 2 evidence for the change window needed before prod
 
-        **Points:**
-        - Why leave Porter: [cost / control / compliance]
-        - How you de-risked it: parallel run, per-service cutover
-        - What you'd do differently: [lesson]
-        """
-        answer.state = .done
-        var ask = CueCard(kind: .ask, title: CueKind.ask.title(for: mode), quote: nil, isAuto: false)
-        ask.text = "1. What does the platform team own today versus product teams? — shows where you'd fit"
-        cues = [ask, answer]
+            ### Decisions
+            - Cut over next Tuesday with Porter as rollback
+
+            ### Action items
+            - **You** — secrets rotation + SOC 2 evidence, by **Thursday**
+            """
+        }
     }
 
     func copyTranscript() {

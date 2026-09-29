@@ -15,19 +15,24 @@ public enum Speaker: String, Codable, Sendable, CaseIterable {
     public var isOtherParty: Bool { self != .you }
 }
 
-public struct Utterance: Identifiable, Equatable, Sendable {
+public struct Utterance: Identifiable, Equatable, Codable, Sendable {
     public let id: UUID
     public let speaker: Speaker
     public var text: String
     public let startedAt: Date
     public var updatedAt: Date
+    /// When the first words were actually spoken, from the recognizer's audio timeline.
+    /// `startedAt` is when they finished transcribing, a few seconds later.
+    public var spokenAt: Date?
 
-    public init(id: UUID = UUID(), speaker: Speaker, text: String, startedAt: Date, updatedAt: Date? = nil) {
+    public init(id: UUID = UUID(), speaker: Speaker, text: String, startedAt: Date, updatedAt: Date? = nil,
+                spokenAt: Date? = nil) {
         self.id = id
         self.speaker = speaker
         self.text = text
         self.startedAt = startedAt
         self.updatedAt = updatedAt ?? startedAt
+        self.spokenAt = spokenAt
     }
 }
 
@@ -41,27 +46,27 @@ public struct TranscriptAssembler: Sendable {
     /// Continuous speech (a video, a monologue) is split into readable chunks at fragment boundaries.
     public var maxTurnCharacters: Int
 
-    public init(turnGap: TimeInterval = 3.0, maxTurnCharacters: Int = 600) {
+    public init(turnGap: TimeInterval = 4.0, maxTurnCharacters: Int = 600) {
         self.turnGap = turnGap
         self.maxTurnCharacters = maxTurnCharacters
     }
 
     /// Returns the id of the utterance the fragment landed in.
     @discardableResult
-    public mutating func appendFinal(_ fragment: String, from speaker: Speaker, at time: Date) -> UUID? {
-        let trimmed = fragment.trimmingCharacters(in: .whitespacesAndNewlines)
+    public mutating func appendFinal(_ fragment: String, from speaker: Speaker, at time: Date, spokenAt: Date? = nil) -> UUID? {
+        let trimmed = TranscriptCleaner.clean(fragment)
         guard !trimmed.isEmpty else { return nil }
 
         if var last = utterances.last,
            last.speaker == speaker,
            time.timeIntervalSince(last.updatedAt) <= turnGap,
            last.text.count < maxTurnCharacters {
-            last.text += " " + trimmed
+            last.text = TranscriptCleaner.join(last.text, trimmed)
             last.updatedAt = time
             utterances[utterances.count - 1] = last
             return last.id
         }
-        let u = Utterance(speaker: speaker, text: trimmed, startedAt: time)
+        let u = Utterance(speaker: speaker, text: trimmed, startedAt: time, spokenAt: spokenAt)
         utterances.append(u)
         return u.id
     }
@@ -70,12 +75,18 @@ public struct TranscriptAssembler: Sendable {
         utterances.removeAll()
     }
 
+    /// Continues an earlier transcript (resuming a saved meeting).
+    public mutating func load(_ existing: [Utterance]) {
+        utterances = existing
+    }
+
     /// Removes one fragment from an utterance, dropping the utterance if nothing is left.
     @discardableResult
     public mutating func removeFragment(_ fragment: String, from id: UUID) -> Bool {
         guard let i = utterances.firstIndex(where: { $0.id == id }) else { return false }
-        let trimmed = fragment.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let range = utterances[i].text.range(of: trimmed, options: .backwards) else { return false }
+        let trimmed = TranscriptCleaner.clean(fragment)
+        guard !trimmed.isEmpty,
+              let range = utterances[i].text.range(of: trimmed, options: [.backwards, .caseInsensitive]) else { return false }
         var text = utterances[i].text
         text.removeSubrange(range)
         text = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")

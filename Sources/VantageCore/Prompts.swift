@@ -1,37 +1,27 @@
 import Foundation
 
 public enum Mode: String, CaseIterable, Codable, Identifiable, Sendable {
-    case candidate, interviewer, meeting, sales
+    case meeting, sales
 
     public var id: String { rawValue }
 
-    public var title: String {
-        switch self {
-        case .candidate: "Interview — I'm the candidate"
-        case .interviewer: "Interview — I'm interviewing"
-        case .meeting: "Meeting"
-        case .sales: "Customer / sales call"
-        }
+    /// Notes saved under the old interview modes open as meetings.
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = Mode(rawValue: raw) ?? .meeting
     }
 
-    public var shortTitle: String {
+    public var title: String {
         switch self {
-        case .candidate: "Candidate"
-        case .interviewer: "Interviewer"
         case .meeting: "Meeting"
         case .sales: "Customer call"
         }
     }
 
-    /// Label for the "what do I say now" button.
-    public var respondLabel: String {
-        self == .interviewer ? "Evaluate" : "Answer"
-    }
+    public var shortTitle: String { title }
 
     public var contextPlaceholder: String {
         switch self {
-        case .candidate: "Paste your résumé, the job description, company notes, and stories you want to tell."
-        case .interviewer: "Paste the role description, what you're assessing, and the candidate's résumé."
         case .meeting: "Paste the agenda, your goals, open decisions, and who's attending."
         case .sales: "Paste the account notes, product details, pricing guardrails, and known objections."
         }
@@ -39,18 +29,6 @@ public enum Mode: String, CaseIterable, Codable, Identifiable, Sendable {
 
     var roleBrief: String {
         switch self {
-        case .candidate:
-            """
-            The user is the CANDIDATE in a job interview. "Them" is the interviewer.
-            Help the user answer well: concrete, structured (STAR for behavioral questions), \
-            grounded in the user's real background from the context notes.
-            """
-        case .interviewer:
-            """
-            The user is the INTERVIEWER. "Them" is the candidate.
-            Help the user assess answers fairly against the role, spot vague or unsupported claims, \
-            and probe with sharp follow-ups. Never suggest illegal or discriminatory questions.
-            """
         case .meeting:
             """
             The user is a participant in a work meeting. "Them" is everyone else on the call.
@@ -72,7 +50,7 @@ public enum CueKind: String, Codable, Sendable {
 
     public func title(for mode: Mode) -> String {
         switch self {
-        case .respond: mode == .interviewer ? "Evaluate & follow up" : "Suggested answer"
+        case .respond: "Suggested answer"
         case .ask: "Questions to ask"
         case .recap: "Recap"
         case .custom: "Your question"
@@ -88,7 +66,7 @@ public enum PromptBuilder {
     public static func system(mode: Mode, contextNotes: String) -> String {
         let notes = contextNotes.trimmingCharacters(in: .whitespacesAndNewlines)
         return """
-        You are Cue, a real-time assistant running beside a live conversation. The user glances \
+        You are Vantage, a real-time assistant running beside a live conversation. The user glances \
         at your output while talking, so every word must earn its place.
 
         \(mode.roleBrief)
@@ -125,17 +103,6 @@ public enum PromptBuilder {
         case .respond:
             let target = focus?.text ?? utterances.last(where: { $0.speaker.isOtherParty })?.text
             let quoted = target.map { "\n\nRespond to this, the latest from the other side:\n\"\($0)\"" } ?? ""
-            switch mode {
-            case .interviewer:
-                task = """
-                Assess the candidate's latest answer.\(quoted)
-
-                Format:
-                **Signal:** strong / mixed / weak — one line on why
-                **Gaps:** up to 2 bullets on what was vague or missing
-                **Follow-up:** the single best probing question to ask next
-                """
-            default:
                 task = """
                 Draft what the user should say next.\(quoted)
 
@@ -145,7 +112,6 @@ public enum PromptBuilder {
                 If this isn't really a question for the user, reply with one line saying what's \
                 happening and whether they need to respond.
                 """
-            }
         case .ask:
             task = """
             Suggest the 3 best questions the user could ask at this moment, most valuable first. \
@@ -171,6 +137,57 @@ public enum PromptBuilder {
         </transcript>
 
         \(task)
+        """
+    }
+
+    /// Post-meeting write-up: the user's rough notes, fleshed out and checked against the transcript.
+    public static func notesSystem(mode: Mode, contextNotes: String) -> String {
+        let notes = contextNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        return """
+        You write meeting notes. You get the user's own rough notes and a transcript from \
+        on-device speech recognition (expect misheard words and missing punctuation; infer intent, \
+        never comment on transcription quality). "You" is the user; "Them" is everyone else on the \
+        call; "Room" is a single microphone picking up everyone in the room.
+
+        \(mode.roleBrief)
+
+        Rules:
+        - The user's notes show what they care about. Keep every point they wrote, in their order, \
+        expanded with the relevant detail from the transcript. Add other important points after.
+        - Only facts from the transcript, the user's notes, and the context notes. Never invent \
+        names, numbers, dates, or commitments. If something is unclear, say so briefly.
+        - Scannable: short bullets, nested where it helps. Bold only key names, numbers, and decisions.
+        - Measured, factual tone. No filler, no hype, no preamble.
+
+        Output Markdown only, in this shape:
+        # <short title for the meeting, 3–7 words>
+        ### <topic heading>
+        - bullets (as many topic sections as the conversation needs)
+        ### Decisions
+        - bullets, or "None recorded"
+        ### Action items
+        - **Owner** — task (due date if said), or "None recorded"
+
+        <context_notes>
+        \(notes.isEmpty ? "(none provided)" : notes)
+        </context_notes>
+        """
+    }
+
+    public static func notesUser(title: String, userNotes: String, utterances: [Utterance]) -> String {
+        let transcript = formatTranscript(utterances)
+        let mine = userNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let named = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return """
+        \(named.isEmpty ? "" : "The user titled this meeting: \(named)\n\n")<my_notes>
+        \(mine.isEmpty ? "(the user took no notes)" : mine)
+        </my_notes>
+
+        <transcript>
+        \(transcript.isEmpty ? "(no transcript)" : transcript)
+        </transcript>
+
+        Write the meeting notes.
         """
     }
 

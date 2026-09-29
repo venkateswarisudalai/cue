@@ -1,4 +1,4 @@
-import CueCore
+import VantageCore
 import Foundation
 import Security
 
@@ -26,12 +26,16 @@ enum Pref {
     static let saveSessions = "saveSessions"
     static let cliPath = "cliPath"
     static let floatOnTop = "floatOnTop"
+    static let showSuggestions = "showSuggestions"
+    static let autoEnhance = "autoEnhance"
+    static let recordAudio = "recordAudio"
+    static let meetingDefaultApplied = "meetingDefaultApplied"
 
     static let defaultModel = "claude-opus-5"
 
     static func register() {
         UserDefaults.standard.register(defaults: [
-            mode: Mode.candidate.rawValue,
+            mode: Mode.meeting.rawValue,
             autoRespond: true,
             useMic: true,
             useCallAudio: true,
@@ -41,7 +45,15 @@ enum Pref {
             saveSessions: true,
             cliPath: "",
             floatOnTop: false,
+            showSuggestions: false,
+            autoEnhance: true,
+            recordAudio: false,
         ])
+        // Vantage opens as a meeting notepad now; move earlier installs off the old candidate default once.
+        if !d.bool(forKey: meetingDefaultApplied) {
+            d.set(Mode.meeting.rawValue, forKey: mode)
+            d.set(true, forKey: meetingDefaultApplied)
+        }
     }
 
     static func notesKey(_ mode: Mode) -> String { "contextNotes.\(mode.rawValue)" }
@@ -54,10 +66,10 @@ enum Pref {
 }
 
 enum Keychain {
-    static let service = "com.venka.cue"
+    static let service = "com.venka.vantage"
     static let apiKeyAccount = "anthropic-api-key"
 
-    static func read(_ account: String = apiKeyAccount) -> String? {
+    static func read(_ account: String = apiKeyAccount, service: String = service) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -84,6 +96,42 @@ enum Keychain {
         var add = base
         add[kSecValueData as String] = Data(trimmed.utf8)
         SecItemAdd(add as CFDictionary, nil)
+    }
+}
+
+enum AppPaths {
+    /// Named by bundle ID: an unrelated app already owns "Application Support/vantage".
+    static var support: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("com.venka.vantage", isDirectory: true)
+    }
+}
+
+/// The app was called Cue until 2026-09-29. Carries its settings, API key, notes, recordings,
+/// and Markdown copies over to Vantage once; the old files are moved, not copied.
+enum LegacyMigration {
+    static let oldBundleID = "com.venka.cue"
+    private static let doneKey = "migratedFromCue"
+
+    static func run() {
+        let d = UserDefaults.standard
+        if !d.bool(forKey: doneKey) {
+            if let old = d.persistentDomain(forName: oldBundleID) {
+                for (key, value) in old where d.object(forKey: key) == nil { d.set(value, forKey: key) }
+            }
+            if Keychain.read() == nil, let key = Keychain.read(service: oldBundleID) { Keychain.write(key) }
+            d.set(true, forKey: doneKey)
+        }
+
+        let fm = FileManager.default
+        let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        // Each move is skipped once done, so this is safe on every launch.
+        for (from, to) in [(support.appendingPathComponent("Cue"), AppPaths.support),
+                           (docs.appendingPathComponent("Cue Sessions"), docs.appendingPathComponent("Vantage Sessions"))]
+        where fm.fileExists(atPath: from.path) && !fm.fileExists(atPath: to.path) {
+            try? fm.moveItem(at: from, to: to)
+        }
     }
 }
 
