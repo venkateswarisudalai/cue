@@ -14,4 +14,4 @@ npm run e2e                               # macOS/Linux host Chromium
 npm run build && npx vite preview --host 0.0.0.0 --port 4173 &  e2e/linux/run.sh   # Linux in Docker
 ```
 
-`STT_URL`, `NOTES_MODEL`, and `BASE_URL` override the defaults (e.g. `BASE_URL=https://venkateswarisudalai.github.io/cue/`).
+`STT_URL`, `NOTES_MODEL`, and `BASE_URL` override the defaults (e.g. `BASE_URL=https://venkateswarisudalai.github.io/vantage/`).

@@ -9,7 +9,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 VERSION="$(node -p "require('@playwright/test/package.json').version")"
 
-TARGET="${BASE_URL:-http://localhost:4173/cue/}"   # or the live site: BASE_URL=https://venkateswarisudalai.github.io/cue/
+TARGET="${BASE_URL:-http://localhost:4173/vantage/}"   # or the live site: BASE_URL=https://venkateswarisudalai.github.io/vantage/
 
 docker run --rm --add-host=host.docker.internal:host-gateway -e BASE_URL="$TARGET" \
   -v "$PWD/e2e:/work/e2e:ro" -v "$PWD/playwright.config.ts:/work/playwright.config.ts:ro" \

@@ -4,17 +4,17 @@ A Granola-style meeting notepad. Vantage transcribes your calls, and when the ca
 
 | Windows · Linux · ChromeOS · any computer | Mac |
 |---|---|
-| **Web app, no install:** [venkateswarisudalai.github.io/cue](https://venkateswarisudalai.github.io/cue/) in Chrome or Edge. Add a free Gemini or Groq key in Settings. See [web/README.md](web/README.md). | **Native app** (below): on-device speech, call detection, menu bar. |
+| **Web app, no install:** [venkateswarisudalai.github.io/vantage](https://venkateswarisudalai.github.io/vantage/) in Chrome or Edge. Add a free Gemini or Groq key in Settings. See [web/README.md](web/README.md). | **Native app** (below): on-device speech, call detection, menu bar. |
 
 ## Install on Mac
 
 **One command** (downloads the latest release into /Applications and opens it):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/venkateswarisudalai/cue/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/venkateswarisudalai/vantage/main/scripts/install.sh | bash
 ```
 
-Run the same command again to update. Or download **Vantage.dmg** from [Releases](https://github.com/venkateswarisudalai/cue/releases), open it and drag Vantage into Applications. Vantage isn't notarized yet, so macOS warns the first time you open a downloaded copy: click **Done**, then **System Settings → Privacy & Security → Open Anyway**. The one-command install avoids that warning.
+Run the same command again to update. Or download **Vantage.dmg** from [Releases](https://github.com/venkateswarisudalai/vantage/releases), open it and drag Vantage into Applications. Vantage isn't notarized yet, so macOS warns the first time you open a downloaded copy: click **Done**, then **System Settings → Privacy & Security → Open Anyway**. The one-command install avoids that warning.
 
 **You'll need:** an Apple silicon Mac on macOS 26 (Tahoe) or later. For AI notes and suggestions, pick any one AI source in **Settings → AI** (transcription works without one):
 
