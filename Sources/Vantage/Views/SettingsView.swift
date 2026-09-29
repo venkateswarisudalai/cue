@@ -1,5 +1,5 @@
 import AppKit
-import CueCore
+import VantageCore
 import PDFKit
 import SwiftUI
 
@@ -9,6 +9,8 @@ struct SettingsView: View {
     @AppStorage(Pref.effort) private var effort = "low"
     @AppStorage(Pref.cliPath) private var cliPath = ""
     @AppStorage(Pref.saveSessions) private var saveSessions = true
+    @AppStorage(Pref.recordAudio) private var recordAudio = false
+    @AppStorage(Pref.autoEnhance) private var autoEnhance = true
 
     @State private var apiKey = ""
     @State private var keySaved = Keychain.read() != nil
@@ -55,8 +57,16 @@ struct SettingsView: View {
                 LabeledContent("Language", value: Locale.current.identifier)
             }
 
+            Section("Recording") {
+                Toggle("Record audio while listening", isOn: $recordAudio)
+                Text("Saves an .m4a of your mic and call audio with each note; click a transcript timestamp to play from there. "
+                     + "Recording people can require their consent — tell everyone before you start.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
             Section("Sessions") {
-                Toggle("Save transcript and cues when a session stops", isOn: $saveSessions)
+                Toggle("Write notes automatically when listening stops", isOn: $autoEnhance)
+                Toggle("Also save a Markdown copy to Documents/Vantage Sessions", isOn: $saveSessions)
                 Button("Open Sessions Folder") {
                     try? FileManager.default.createDirectory(at: SessionExporter.directory, withIntermediateDirectories: true)
                     NSWorkspace.shared.open(SessionExporter.directory)
@@ -83,7 +93,7 @@ struct SettingsView: View {
             do {
                 let client = try LLMFactory.make()
                 var text = ""
-                for try await chunk in client.stream(system: "Reply in five words or fewer.", user: "Say hello to Cue.", effort: "low") {
+                for try await chunk in client.stream(system: "Reply in five words or fewer.", user: "Say hello to Vantage.", effort: "low") {
                     text += chunk
                 }
                 testOutput = "✓ \(client.displayName): \(text)"

@@ -19,13 +19,16 @@ enum TranscriberError: LocalizedError {
 /// Audio never leaves the Mac; only finished text is handed to the app.
 final class LiveTranscriber: @unchecked Sendable {
     var onVolatile: ((String) -> Void)?
-    var onFinal: ((String) -> Void)?
+    /// Text, and the host-clock time its first word was spoken (nil if unknown).
+    var onFinal: ((String, TimeInterval?) -> Void)?
 
     private var analyzer: SpeechAnalyzer?
     private var input: AsyncStream<AnalyzerInput>.Continuation?
     private var resultsTask: Task<Void, Never>?
     private var analyzerFormat: AVAudioFormat?
     private var converter: AVAudioConverter?
+    /// Host time of the first buffer fed; result time ranges count from there.
+    private var firstHostTime: TimeInterval?
 
     /// Downloads the speech model for `locale` if needed. Safe to call repeatedly.
     static func prepareAssets(locale: Locale, progress: ((Double) -> Void)? = nil) async throws -> Locale {
@@ -47,7 +50,8 @@ final class LiveTranscriber: @unchecked Sendable {
         let transcriber = SpeechTranscriber(
             locale: locale,
             transcriptionOptions: [],
-            reportingOptions: [.volatileResults, .fastResults],
+            // No .fastResults: it finalizes sooner but with noticeably worse word accuracy.
+            reportingOptions: [.volatileResults],
             attributeOptions: [])
         guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
             throw TranscriberError.noAudioFormat
@@ -61,7 +65,13 @@ final class LiveTranscriber: @unchecked Sendable {
             do {
                 for try await result in transcriber.results {
                     let text = String(result.text.characters)
-                    if result.isFinal { self?.onFinal?(text) } else { self?.onVolatile?(text) }
+                    if result.isFinal {
+                        let start = result.range.start.seconds
+                        let spoken = self?.firstHostTime.flatMap { start.isFinite ? $0 + start : nil }
+                        self?.onFinal?(text, spoken)
+                    } else {
+                        self?.onVolatile?(text)
+                    }
                 }
             } catch {
                 // The stream ends with an error only when analysis is cancelled.
@@ -80,8 +90,9 @@ final class LiveTranscriber: @unchecked Sendable {
     }
 
     /// Called from the capture thread. Buffers from one source arrive serially.
-    func feed(_ buffer: AVAudioPCMBuffer) {
+    func feed(_ buffer: AVAudioPCMBuffer, at hostTime: TimeInterval? = nil) {
         guard let input, let converted = convert(buffer) else { return }
+        if firstHostTime == nil { firstHostTime = hostTime ?? HostClock.now }
         input.yield(AnalyzerInput(buffer: converted))
     }
 
@@ -93,6 +104,7 @@ final class LiveTranscriber: @unchecked Sendable {
         analyzer = nil
         resultsTask = nil
         converter = nil
+        firstHostTime = nil
     }
 
     private func convert(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {

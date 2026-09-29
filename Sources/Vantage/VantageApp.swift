@@ -1,5 +1,5 @@
 import AVFoundation
-import CueCore
+import VantageCore
 import SwiftUI
 
 @main
@@ -10,7 +10,7 @@ enum Entry {
             SelfTest.runAndExit { try await SelfTest.transcribe(path: args[i + 1]) }
         }
         if let i = args.firstIndex(of: "--selftest-llm") {
-            let text = i + 1 < args.count ? args[i + 1] : "Tell me about a time you handled a production outage?"
+            let text = i + 1 < args.count ? args[i + 1] : "What would it take to cut over payments by Tuesday?"
             SelfTest.runAndExit { try await SelfTest.cue(question: text) }
         }
         if let i = args.firstIndex(of: "--selftest-simulate"), i + 1 < args.count {
@@ -18,28 +18,44 @@ enum Entry {
             let echo = args.contains("--echo")
             SelfTest.runAndExit { try await SelfTest.simulate(path: path, echo: echo) }
         }
+        if let i = args.firstIndex(of: "--selftest-record"), i + 1 < args.count {
+            let path = args[i + 1]
+            SelfTest.runAndExit { try await SelfTest.record(path: path) }
+        }
+        if args.contains("--selftest-notes") {
+            SelfTest.runAndExit { try await SelfTest.notes() }
+        }
         if let i = args.firstIndex(of: "--selftest-snapshot"), i + 1 < args.count {
             MainActor.assumeIsolated { SelfTest.snapshot(to: args[i + 1]) }
             exit(0)
         }
-        CueApp.main()
+        LegacyMigration.run()
+        VantageApp.main()
     }
 }
 
-struct CueApp: App {
+struct VantageApp: App {
     @StateObject private var model = AppModel()
 
     var body: some Scene {
-        Window("Cue", id: "main") {
+        Window("Vantage", id: "main") {
             ContentView()
                 .environmentObject(model)
-                .frame(minWidth: 780, minHeight: 460)
+                .frame(minWidth: 820, minHeight: 520)
         }
-        .defaultSize(width: 1120, height: 720)
+        .defaultSize(width: 1180, height: 760)
         .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("New Note", action: model.newMeeting)
+                    .keyboardShortcut("n")
+                    .disabled(model.phase != .idle)
+            }
             CommandMenu("Session") {
                 Button(model.isRunning ? "Stop Listening" : "Start Listening", action: model.toggle)
                     .keyboardShortcut("r")
+                Button("Generate Notes", action: model.generateNotes)
+                    .keyboardShortcut("e")
+                    .disabled(model.isRunning || model.enhancing)
                 Divider()
                 Button("Open Sessions Folder") {
                     try? FileManager.default.createDirectory(at: SessionExporter.directory, withIntermediateDirectories: true)
@@ -54,7 +70,7 @@ struct CueApp: App {
     }
 }
 
-/// Headless checks that exercise the real pipeline: `Cue --selftest-transcribe file.aiff`, `Cue --selftest-llm`.
+/// Headless checks that exercise the real pipeline: `Vantage --selftest-transcribe file.aiff`, `Vantage --selftest-llm`.
 enum SelfTest {
     static func runAndExit(_ body: @escaping @Sendable () async throws -> Void) -> Never {
         Task {
@@ -74,9 +90,9 @@ enum SelfTest {
     @MainActor
     static func snapshot(to path: String) {
         NSApplication.shared.setActivationPolicy(.prohibited)
-        let model = AppModel()
-        model.loadDemoSession()
-        let size = NSRect(x: 0, y: 0, width: 1120, height: 720)
+        let model = AppModel(loadSaved: false)
+        model.loadDemoSession(live: CommandLine.arguments.contains("--live"))
+        let size = NSRect(x: 0, y: 0, width: 1180, height: 760)
         let host = NSHostingView(rootView: ContentView().environmentObject(model).frame(width: size.width, height: size.height))
         host.frame = size
         let window = NSWindow(contentRect: size, styleMask: [.titled], backing: .buffered, defer: false)
@@ -99,7 +115,7 @@ enum SelfTest {
     /// Full pipeline minus capture: file → transcription → echo gate → auto-cue → Claude.
     @MainActor
     static func simulate(path: String, echo: Bool) async throws {
-        let model = AppModel()
+        let model = AppModel(loadSaved: false)
         model.trace = { print("trace: \($0)") }
         print("simulating \(path) echo=\(echo) autoRespond=\(Pref.d.bool(forKey: Pref.autoRespond)) mode=\(model.mode.rawValue)")
         try await model.runSimulation(file: URL(fileURLWithPath: path), echo: echo)
@@ -128,7 +144,7 @@ enum SelfTest {
 
         let finals = FinalsBox()
         let transcriber = LiveTranscriber()
-        transcriber.onFinal = { text in
+        transcriber.onFinal = { text, _ in
             print("final: \(text)")
             finals.append(text)
         }
@@ -152,13 +168,62 @@ enum SelfTest {
         guard !transcript.isEmpty else { throw TranscriberError.noAudioFormat }
     }
 
+    /// Writes a clip as the call track and, 1.5s later, as the mic track, then mixes them like a
+    /// real session. The result should be ~1.5s longer than the clip.
+    static func record(path: String) async throws {
+        let meeting = UUID()
+        let recorder = try MeetingRecorder(meeting: meeting)
+        defer { try? FileManager.default.removeItem(at: MeetingRecorder.folder(for: meeting)) }
+        let file = try AVAudioFile(forReading: URL(fileURLWithPath: path))
+        let format = file.processingFormat
+        let chunk = AVAudioFrameCount(format.sampleRate / 10)
+        let t0 = HostClock.now
+        var t: TimeInterval = 0
+        while file.framePosition < file.length {
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: chunk) else { break }
+            try file.read(into: buffer, frameCount: chunk)
+            if buffer.frameLength == 0 { break }
+            recorder.call.write(buffer, at: t0 + t)
+            recorder.mic.write(buffer, at: t0 + t + 1.5)
+            t += Double(buffer.frameLength) / format.sampleRate
+        }
+        guard let r = try await recorder.finish() else { throw LLMError.failed("no recording produced") }
+        let clip = Double(file.length) / format.sampleRate
+        print(String(format: "clip %.2fs → recording %.2fs (%@)", clip, r.duration, r.file))
+        guard abs(r.duration - (clip + 1.5)) < 0.5 else { throw LLMError.failed("unexpected duration") }
+    }
+
+    /// Real post-meeting notes from a short sample transcript via your backend.
+    static func notes() async throws {
+        Pref.register()
+        let client = try LLMFactory.make()
+        print("backend: \(client.displayName)")
+        let t0 = Date()
+        let lines: [(Speaker, String)] = [
+            (.them, "Okay so main thing today is the EKS cutover for payments."),
+            (.you, "Staging's been on the new cluster two weeks, error rates are flat."),
+            (.them, "What's blocking prod, still secrets rotation?"),
+            (.you, "Mostly, plus the SOC 2 evidence for the change window. I can have both by Thursday."),
+            (.them, "Great, let's cut over next Tuesday and keep Porter warm for a week."),
+        ]
+        let u = lines.enumerated().map { Utterance(speaker: $1.0, text: $1.1, startedAt: t0.addingTimeInterval(Double($0) * 8)) }
+        var text = ""
+        for try await chunk in client.stream(system: PromptBuilder.notesSystem(mode: .meeting, contextNotes: ""),
+                                             user: PromptBuilder.notesUser(title: "", userNotes: "blocker: secrets\nSOC2??", utterances: u),
+                                             effort: "medium") {
+            text += chunk
+        }
+        print(text)
+        print("title: \(Meeting.suggestedTitle(fromNotes: text) ?? "-")")
+    }
+
     static func cue(question: String) async throws {
         Pref.register()
         let client = try LLMFactory.make()
         print("backend: \(client.displayName)")
         let utterances = [Utterance(speaker: .them, text: question, startedAt: Date())]
-        let system = PromptBuilder.system(mode: .candidate, contextNotes: "Platform engineer, 8 years, AWS and Kubernetes.")
-        let user = PromptBuilder.userMessage(kind: .respond, mode: .candidate, utterances: utterances)
+        let system = PromptBuilder.system(mode: .meeting, contextNotes: "Platform engineer, 8 years, AWS and Kubernetes.")
+        let user = PromptBuilder.userMessage(kind: .respond, mode: .meeting, utterances: utterances)
         let started = Date()
         var first: TimeInterval?
         for try await chunk in client.stream(system: system, user: user, effort: "low") {

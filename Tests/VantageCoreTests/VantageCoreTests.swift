@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import CueCore
+@testable import VantageCore
 
 @Suite struct TranscriptAssemblerTests {
     let t0 = Date(timeIntervalSince1970: 1_000)
@@ -297,16 +297,16 @@ import Testing
             Utterance(speaker: .them, text: "How do you handle incidents?", startedAt: t0),
             Utterance(speaker: .you, text: "Good question.", startedAt: t0.addingTimeInterval(2)),
         ]
-        let msg = PromptBuilder.userMessage(kind: .respond, mode: .candidate, utterances: us)
+        let msg = PromptBuilder.userMessage(kind: .respond, mode: .sales, utterances: us)
         #expect(msg.contains("\"How do you handle incidents?\""))
         #expect(msg.contains("**Say:**"))
     }
 
-    @Test func interviewerModeEvaluatesInsteadOfAnswering() {
-        let us = [Utterance(speaker: .them, text: "I led the migration.", startedAt: t0)]
-        let msg = PromptBuilder.userMessage(kind: .respond, mode: .interviewer, utterances: us)
-        #expect(msg.contains("**Follow-up:**"))
-        #expect(!msg.contains("**Say:**"))
+    @Test func onlyMeetingAndCustomerCallModes() throws {
+        #expect(Mode.allCases.map(\.title) == ["Meeting", "Customer call"])
+        // Notes saved under the removed interview modes still open, as meetings.
+        let legacy = try JSONDecoder().decode([Mode].self, from: Data(#"["candidate","interviewer","sales"]"#.utf8))
+        #expect(legacy == [.meeting, .meeting, .sales])
     }
 
     @Test func systemPromptEmbedsNotesAndStaysStable() {
@@ -327,5 +327,121 @@ import Testing
     @Test func timestampFormats() {
         #expect(PromptBuilder.timestamp(59) == "0:59")
         #expect(PromptBuilder.timestamp(3725) == "1:02:05")
+    }
+}
+
+@Suite struct TranscriptCleanerTests {
+    @Test(arguments: [
+        ("um so I I think we should uh ship it", "So I think we should ship it"),
+        ("we tried that , and it failed .", "We tried that, and it failed."),
+        ("it worked uh.", "It worked."),
+        ("i'm not sure. i think so", "I'm not sure. I think so"),
+        ("The the cache was cold", "The cache was cold"),
+        ("Revenue grew 3.5 percent", "Revenue grew 3.5 percent"),
+    ])
+    func cleans(raw: String, expected: String) {
+        #expect(TranscriptCleaner.clean(raw) == expected)
+    }
+
+    @Test func isIdempotent() {
+        let once = TranscriptCleaner.clean("um, so the the plan is uh fine , right")
+        #expect(TranscriptCleaner.clean(once) == once)
+    }
+
+    @Test func keepsDeliberateRepeats() {
+        #expect(TranscriptCleaner.clean("Very, very important") == "Very, very important")
+    }
+
+    @Test func joinsFragmentsNaturally() {
+        #expect(TranscriptCleaner.join("We moved the service", "And then it broke.") == "We moved the service and then it broke.")
+        #expect(TranscriptCleaner.join("It broke.", "then we fixed it") == "It broke. Then we fixed it")
+        #expect(TranscriptCleaner.join("talk to the", "the platform team") == "talk to the platform team")
+        #expect(TranscriptCleaner.join("We met", "Priya yesterday") == "We met Priya yesterday")
+    }
+
+    @Test func assemblerCleansAndStillRetractsEchoes() {
+        var a = TranscriptAssembler()
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        let id = a.appendFinal("um I think workspaces are fine.", from: .you, at: t0)!
+        a.appendFinal("great. next question.", from: .you, at: t0.addingTimeInterval(1))
+        #expect(a.utterances[0].text == "I think workspaces are fine. Great. Next question.")
+        let removed = a.removeFragment("great. next question.", from: id)
+        #expect(removed)
+        #expect(a.utterances[0].text == "I think workspaces are fine.")
+    }
+}
+
+@Suite struct MeetingTests {
+    @Test func roundTripsThroughJSON() throws {
+        let m = Meeting(title: "Sync", mode: .meeting, userNotes: "a",
+                        utterances: [Utterance(speaker: .them, text: "Hi.", startedAt: Date(timeIntervalSince1970: 5))])
+        let e = JSONEncoder(); e.dateEncodingStrategy = .iso8601
+        let d = JSONDecoder(); d.dateDecodingStrategy = .iso8601
+        let back = try d.decode(Meeting.self, from: e.encode(m))
+        #expect(back.title == "Sync" && back.utterances.map(\.text) == ["Hi."] && back.mode == .meeting)
+    }
+
+    @Test func emptiness() {
+        #expect(Meeting().isEmpty)
+        #expect(!Meeting(userNotes: "x").isEmpty)
+        #expect(Meeting().displayTitle == "New note")
+    }
+
+    @Test func takesTitleFromFirstHeading() {
+        #expect(Meeting.suggestedTitle(fromNotes: "\n# Payments cutover\n### A\n- b") == "Payments cutover")
+        #expect(Meeting.suggestedTitle(fromNotes: "### Topic\n- b") == nil)
+    }
+
+    @Test func parsesMarkdownBlocks() {
+        let md = """
+        ### Decisions
+        - Ship **Tuesday**
+          - Porter as rollback
+        1. First
+        Plain line
+        continues here
+
+        ---
+        """
+        #expect(MarkdownBlock.parse(md) == [
+            .heading(level: 3, text: "Decisions"),
+            .bullet(depth: 0, text: "Ship **Tuesday**"),
+            .bullet(depth: 1, text: "Porter as rollback"),
+            .numbered(depth: 0, marker: "1.", text: "First"),
+            .paragraph("Plain line continues here"),
+            .divider,
+        ])
+    }
+
+    @Test func notesPromptIncludesUserNotesAndTranscript() {
+        let u = [Utterance(speaker: .them, text: "Ship Tuesday.", startedAt: Date())]
+        let msg = PromptBuilder.notesUser(title: "", userNotes: "rollback?", utterances: u)
+        #expect(msg.contains("rollback?") && msg.contains("Them: Ship Tuesday."))
+        #expect(PromptBuilder.notesSystem(mode: .meeting, contextNotes: "").contains("Action items"))
+    }
+}
+
+@Suite struct RecordingPlaybackTests {
+    let t0 = Date(timeIntervalSince1970: 50_000)
+
+    @Test func mapsLinesToTheRecordingThatHoldsThem() {
+        let first = Recording(file: "a.m4a", startedAt: t0, duration: 600)
+        let second = Recording(file: "b.m4a", startedAt: t0.addingTimeInterval(3600), duration: 300)
+        let m = Meeting(recordings: [first, second])
+        let early = Utterance(speaker: .them, text: "x", startedAt: t0.addingTimeInterval(95), spokenAt: t0.addingTimeInterval(90))
+        #expect(m.playback(for: early)?.recording == first)
+        #expect(m.playback(for: early)?.offset == 90)
+        let late = Utterance(speaker: .you, text: "y", startedAt: t0.addingTimeInterval(3700), spokenAt: t0.addingTimeInterval(3660))
+        #expect(m.playback(for: late)?.recording == second)
+        // Between sessions (no audio was recorded then).
+        let gap = Utterance(speaker: .you, text: "z", startedAt: t0.addingTimeInterval(1800), spokenAt: t0.addingTimeInterval(1800))
+        #expect(m.playback(for: gap) == nil)
+    }
+
+    @Test func oldMeetingJSONWithoutRecordingsStillLoads() throws {
+        let json = #"{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","title":"t","createdAt":"2026-09-01T10:00:00Z","mode":"candidate","userNotes":"","enhancedNotes":"","utterances":[],"duration":0}"#
+        let d = JSONDecoder(); d.dateDecodingStrategy = .iso8601
+        let m = try d.decode(Meeting.self, from: Data(json.utf8))
+        #expect(m.recordings.isEmpty && m.mode == .meeting)
     }
 }
