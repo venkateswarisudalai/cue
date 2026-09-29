@@ -21,7 +21,13 @@ Run the same command again to update. Or download **Vantage.dmg** from [Releases
 | **Any OpenAI-compatible server** (vLLM, llama.cpp, LiteLLM, a company gateway) | Yours | *Other provider → Custom*, enter its URL |
 | **Claude**: [Claude Code](https://claude.com/claude-code) login or an Anthropic API key | Your plan / API pricing | Log in to Claude Code, or paste the key |
 
-Keys are stored in your Mac's Keychain and sent only to the provider you choose. Bigger models write better notes; small local models work but are less thorough.
+**Which should I pick?** Transcription needs no key: it's Apple's on-device speech recognition. The key only powers notes and suggestions.
+- **Best free choice: Google Gemini.** Get a free key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey) (no card). It handles hour-long meetings. Google may use free-tier data to improve its products.
+- **Most private: Ollama.** Nothing leaves your Mac. `llama3.2` (2 GB) works on any Mac but can miss or invent details; on a 16 GB+ Mac, a larger model such as `qwen3:14b` writes much better notes.
+- **Fastest: Groq** (free key at [console.groq.com/keys](https://console.groq.com/keys)). Its free tier caps tokens per minute, so notes for long meetings may hit the limit.
+- **Most variety: OpenRouter** — models ending in `:free` cost nothing but allow a limited number of requests per day.
+
+Free-tier terms change; check each provider's page. Keys are stored in your Mac's Keychain and sent only to the provider you choose.
 
 **First run:** press **Start listening** and allow **Microphone** and **Screen & System Audio Recording** (the second lets Vantage hear the other side of calls; quit and reopen Vantage after granting it). Allow notifications so Vantage can offer to start when a call begins.
 
@@ -92,6 +98,7 @@ swift test                                              # unit tests
 swift build && .build/debug/Vantage --selftest-transcribe clip.aiff   # real on-device transcription
 .build/debug/Vantage --selftest-llm "Why do you want this role?"     # real streamed cue via your backend
 .build/debug/Vantage --selftest-notes                                # real post-meeting notes via your backend
+.build/debug/Vantage --selftest-e2e meeting.aiff [-provider compatible -compatProvider ollama]  # audio → transcript → notes → suggestion
 .build/debug/Vantage --selftest-mic-users                        # CoreAudio sees mic use (call detection)
 .build/debug/Vantage --selftest-record clip.aiff                     # two offset tracks → one mixed .m4a
 .build/debug/Vantage --selftest-snapshot out.png [--live] [--transcript] [--transcript-page]

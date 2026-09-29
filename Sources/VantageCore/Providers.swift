@@ -21,35 +21,35 @@ public struct CompatibleProvider: Identifiable, Equatable, Sendable {
         note: "Any server with an OpenAI-style /chat/completions endpoint: vLLM, llama.cpp server, LiteLLM, Azure, a company gateway.")
 
     public static let all: [CompatibleProvider] = [
-        CompatibleProvider(id: "ollama", name: "Ollama (on this Mac)", baseURL: "http://localhost:11434/v1",
+        CompatibleProvider(id: "ollama", name: "Ollama (free, on this Mac)", baseURL: "http://localhost:11434/v1",
                            defaultModel: "llama3.2", needsKey: false, setupURL: "https://ollama.com/download",
-                           note: "Free and fully private — nothing leaves your Mac. Install Ollama, then run `ollama pull llama3.2` (or any model)."),
-        CompatibleProvider(id: "lmstudio", name: "LM Studio (on this Mac)", baseURL: "http://localhost:1234/v1",
+                           note: "Free and fully private — nothing leaves your Mac. Install Ollama, then run `ollama pull llama3.2`. Bigger models (e.g. qwen3:14b) write better notes if your Mac has 16 GB+ of memory."),
+        CompatibleProvider(id: "lmstudio", name: "LM Studio (free, on this Mac)", baseURL: "http://localhost:1234/v1",
                            defaultModel: "", needsKey: false, setupURL: "https://lmstudio.ai",
                            note: "Free and fully private. Load a model in LM Studio and start its local server, then press Load models."),
-        CompatibleProvider(id: "openrouter", name: "OpenRouter", baseURL: "https://openrouter.ai/api/v1",
-                           defaultModel: "meta-llama/llama-3.3-70b-instruct", needsKey: true,
-                           setupURL: "https://openrouter.ai/keys",
-                           note: "One key for hundreds of models, including open ones like Llama, Qwen, DeepSeek, and Mistral."),
-        CompatibleProvider(id: "groq", name: "Groq", baseURL: "https://api.groq.com/openai/v1",
+        CompatibleProvider(id: "gemini", name: "Google Gemini (free tier)", baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
+                           defaultModel: "gemini-2.5-flash", needsKey: true, setupURL: "https://aistudio.google.com/apikey",
+                           note: "Best free choice: a free key from Google AI Studio, no card, and it handles hour-long meetings. Google may use free-tier data to improve its products."),
+        CompatibleProvider(id: "groq", name: "Groq (free tier)", baseURL: "https://api.groq.com/openai/v1",
                            defaultModel: "llama-3.3-70b-versatile", needsKey: true, setupURL: "https://console.groq.com/keys",
-                           note: "Very fast open models (Llama, Qwen, and more), with a free tier."),
+                           note: "Free key, no card, very fast open models. The free tier caps tokens per minute, so notes for long meetings can hit the limit."),
+        CompatibleProvider(id: "openrouter", name: "OpenRouter (free models)", baseURL: "https://openrouter.ai/api/v1",
+                           defaultModel: "meta-llama/llama-3.3-70b-instruct:free", needsKey: true,
+                           setupURL: "https://openrouter.ai/keys",
+                           note: "One key for hundreds of models. Models ending in :free cost nothing but allow a limited number of requests per day."),
+        CompatibleProvider(id: "mistral", name: "Mistral (free tier)", baseURL: "https://api.mistral.ai/v1",
+                           defaultModel: "mistral-small-latest", needsKey: true, setupURL: "https://console.mistral.ai/api-keys",
+                           note: "Free \"Experiment\" plan (phone verification) with rate limits; includes Mistral's open-weight models."),
         CompatibleProvider(id: "together", name: "Together AI", baseURL: "https://api.together.xyz/v1",
                            defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo", needsKey: true,
                            setupURL: "https://api.together.ai/settings/api-keys",
-                           note: "Hosted open models: Llama, Qwen, DeepSeek, Mistral."),
-        CompatibleProvider(id: "gemini", name: "Google Gemini", baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
-                           defaultModel: "gemini-2.5-flash", needsKey: true, setupURL: "https://aistudio.google.com/apikey",
-                           note: "Gemini through Google's OpenAI-compatible endpoint, with a free tier."),
+                           note: "Paid, pay-as-you-go hosted open models: Llama, Qwen, DeepSeek, Mistral."),
         CompatibleProvider(id: "openai", name: "OpenAI", baseURL: "https://api.openai.com/v1",
                            defaultModel: "gpt-4.1-mini", needsKey: true, setupURL: "https://platform.openai.com/api-keys",
-                           note: "GPT models with your OpenAI API key."),
-        CompatibleProvider(id: "mistral", name: "Mistral", baseURL: "https://api.mistral.ai/v1",
-                           defaultModel: "mistral-small-latest", needsKey: true, setupURL: "https://console.mistral.ai/api-keys",
-                           note: "Mistral's hosted models, including its open-weight ones."),
+                           note: "Paid. GPT models with your OpenAI API key."),
         CompatibleProvider(id: "deepseek", name: "DeepSeek", baseURL: "https://api.deepseek.com/v1",
                            defaultModel: "deepseek-chat", needsKey: true, setupURL: "https://platform.deepseek.com/api_keys",
-                           note: "DeepSeek's hosted models."),
+                           note: "Paid, low-cost DeepSeek models."),
         custom,
     ]
 
@@ -65,6 +65,35 @@ public struct CompatibleProvider: Identifiable, Equatable, Sendable {
         }
         guard !b.isEmpty, let url = URL(string: b + path), url.scheme == "http" || url.scheme == "https" else { return nil }
         return url
+    }
+}
+
+/// Ollama's own `/api/chat`. Its OpenAI-style endpoint can't set the context window, and the
+/// default (a few thousand tokens) silently truncates a long meeting transcript.
+public enum OllamaChat {
+    /// `http://localhost:11434/v1` → `http://localhost:11434/api/chat`.
+    public static func endpoint(base: String) -> URL? {
+        var b = base.trimmingCharacters(in: .whitespacesAndNewlines)
+        while b.hasSuffix("/") { b.removeLast() }
+        if b.hasSuffix("/v1") { b.removeLast(3) }
+        return URL(string: b + "/api/chat")
+    }
+
+    /// Room for the whole prompt plus a long answer, in steps that keep model reloads rare.
+    public static func contextWindow(forPromptCharacters chars: Int) -> Int {
+        let needed = chars / 3 + 4096  // ~3 characters per token, conservatively
+        for size in [8192, 16384, 32768, 65536, 131072] where needed <= size { return size }
+        return 131072
+    }
+
+    /// One NDJSON line of a streaming `/api/chat` response.
+    public static func parseLine(_ line: String) -> StreamEvent? {
+        guard let obj = StreamParser.json(line) else { return nil }
+        if let err = obj["error"] as? String { return .failure(err) }
+        if let message = obj["message"] as? [String: Any], let text = message["content"] as? String, !text.isEmpty {
+            return .text(text)
+        }
+        return (obj["done"] as? Bool) == true ? .stop(reason: obj["done_reason"] as? String) : nil
     }
 }
 

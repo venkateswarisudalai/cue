@@ -168,15 +168,18 @@ struct CompatibleClient: LLMClient {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let (bytes, response) = try await URLSession.shared.bytes(for: makeRequest(system: system, user: user))
+                    let native = provider.id == "ollama"
+                    let request = native ? try makeOllamaRequest(system: system, user: user)
+                        : try makeRequest(system: system, user: user)
+                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
                     let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                     guard status == 200 else {
                         var body = ""
                         for try await line in bytes.lines { body += line }
-                        throw LLMError.failed(StreamParser.errorMessage(fromBody: body, status: status))
+                        throw LLMError.failed(Self.explain(status: status, body: body, provider: provider))
                     }
                     for try await line in bytes.lines {
-                        switch ChatCompletionsParser.parseSSELine(line) {
+                        switch native ? OllamaChat.parseLine(line) : ChatCompletionsParser.parseSSELine(line) {
                         case .text(let t): continuation.yield(t)
                         case .failure(let message): throw LLMError.failed(message)
                         default: break
@@ -192,6 +195,42 @@ struct CompatibleClient: LLMClient {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    /// Free tiers fail with rate or size limits; say what that means instead of a bare status code.
+    static func explain(status: Int, body: String, provider: CompatibleProvider) -> String {
+        let detail = StreamParser.errorMessage(fromBody: body, status: status)
+        switch status {
+        case 429:
+            return "\(provider.name) is rate-limiting this key (free tiers allow only so many requests per minute or day). "
+                + "Wait a minute and try again, or pick another model. (\(detail))"
+        case 413:
+            return "This meeting is too long for \(provider.name)'s limits on this key. Try Gemini, a paid tier, or a local model. (\(detail))"
+        case 401, 403:
+            return "\(provider.name) rejected the API key — check it in Settings (⌘,). (\(detail))"
+        case 404 where provider.id == "ollama":
+            return "Ollama doesn't have that model yet — run `ollama pull <model>` or pick one with Load models. (\(detail))"
+        default:
+            return detail
+        }
+    }
+
+    func makeOllamaRequest(system: String, user: String) throws -> URLRequest {
+        guard let url = OllamaChat.endpoint(base: baseURL) else {
+            throw LLMError.failed("Set a valid server URL for Ollama in Settings (⌘,).")
+        }
+        let body: [String: Any] = [
+            "model": model,
+            "stream": true,
+            "messages": [["role": "system", "content": system], ["role": "user", "content": user]],
+            "options": ["temperature": 0.3, "num_ctx": OllamaChat.contextWindow(forPromptCharacters: system.count + user.count)],
+        ]
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 300
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return request
     }
 
     func makeRequest(system: String, user: String) throws -> URLRequest {

@@ -535,3 +535,28 @@ import Testing
         #expect(ChatCompletionsParser.modelIDs(fromBody: body) == ["llama3.2", "qwen3:8b"])
     }
 }
+
+@Suite struct OllamaChatTests {
+    @Test func usesTheNativeEndpoint() {
+        #expect(OllamaChat.endpoint(base: "http://localhost:11434/v1")?.absoluteString == "http://localhost:11434/api/chat")
+        #expect(OllamaChat.endpoint(base: "http://localhost:11434/v1/")?.absoluteString == "http://localhost:11434/api/chat")
+    }
+
+    @Test func sizesTheContextToTheTranscript() {
+        #expect(OllamaChat.contextWindow(forPromptCharacters: 2_000) == 8192)
+        #expect(OllamaChat.contextWindow(forPromptCharacters: 60_000) == 32768)  // ~an hour of talk
+        #expect(OllamaChat.contextWindow(forPromptCharacters: 10_000_000) == 131072)
+    }
+
+    @Test func parsesStreamingLines() {
+        #expect(OllamaChat.parseLine(#"{"message":{"role":"assistant","content":"Hi"},"done":false}"#) == .text("Hi"))
+        #expect(OllamaChat.parseLine(#"{"message":{"role":"assistant","content":""},"done":true,"done_reason":"stop"}"#) == .stop(reason: "stop"))
+        #expect(OllamaChat.parseLine(#"{"error":"model 'x' not found"}"#) == .failure("model 'x' not found"))
+    }
+
+    @Test func freeOptionsComeFirst() {
+        let ids = CompatibleProvider.all.map(\.id)
+        #expect(Array(ids.prefix(4)) == ["ollama", "lmstudio", "gemini", "groq"])
+        #expect(CompatibleProvider.find("openrouter").defaultModel.hasSuffix(":free"))
+    }
+}
