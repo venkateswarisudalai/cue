@@ -10,7 +10,7 @@ enum LLMError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .noBackend: "No AI backend. Add an Anthropic API key in Settings (⌘,) or install Claude Code."
+        case .noBackend: "No AI backend. In Settings (⌘,), add an API key (Anthropic, OpenRouter, Groq, Gemini, OpenAI…), pick a local model (Ollama, LM Studio), or install Claude Code."
         case .missingKey: "Add your Anthropic API key in Settings (⌘,)."
         case .cliNotFound: "Couldn't find the `claude` command. Set its path in Settings (⌘,)."
         case .refused: "Claude declined this request."
@@ -153,5 +153,81 @@ struct ClaudeCLIClient: LLMClient {
                 if process.isRunning { process.terminate() }
             }
         }
+    }
+}
+
+/// OpenAI-style `/chat/completions` streaming: OpenRouter, Groq, Gemini, OpenAI, Ollama, LM Studio…
+struct CompatibleClient: LLMClient {
+    let provider: CompatibleProvider
+    let baseURL: String
+    let apiKey: String?
+    let model: String
+    var displayName: String { "\(provider.name) · \(model)" }
+
+    func stream(system: String, user: String, effort: String) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let (bytes, response) = try await URLSession.shared.bytes(for: makeRequest(system: system, user: user))
+                    let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                    guard status == 200 else {
+                        var body = ""
+                        for try await line in bytes.lines { body += line }
+                        throw LLMError.failed(StreamParser.errorMessage(fromBody: body, status: status))
+                    }
+                    for try await line in bytes.lines {
+                        switch ChatCompletionsParser.parseSSELine(line) {
+                        case .text(let t): continuation.yield(t)
+                        case .failure(let message): throw LLMError.failed(message)
+                        default: break
+                        }
+                    }
+                    continuation.finish()
+                } catch let error as URLError where provider.isLocal && error.code == .cannotConnectToHost {
+                    continuation.finish(throwing: LLMError.failed(
+                        "Couldn't reach \(provider.name) at \(baseURL). Is it running? (\(provider.setupURL))"))
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    func makeRequest(system: String, user: String) throws -> URLRequest {
+        guard let url = CompatibleProvider.endpoint(base: baseURL, path: "/chat/completions") else {
+            throw LLMError.failed("Set a valid server URL for \(provider.name) in Settings (⌘,).")
+        }
+        let body: [String: Any] = [
+            "model": model,
+            "stream": true,
+            "temperature": 0.3,
+            "messages": [["role": "system", "content": system], ["role": "user", "content": user]],
+        ]
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        // Local models can take a while to load on first use.
+        request.timeoutInterval = provider.isLocal ? 300 : 120
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        if let apiKey, !apiKey.isEmpty { request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "authorization") }
+        request.setValue("Vantage", forHTTPHeaderField: "x-title")  // OpenRouter's app attribution
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return request
+    }
+
+    /// Models the server offers, for the Settings picker.
+    static func listModels(baseURL: String, apiKey: String?) async throws -> [String] {
+        guard let url = CompatibleProvider.endpoint(base: baseURL, path: "/models") else {
+            throw LLMError.failed("Enter a valid server URL first.")
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 15
+        if let apiKey, !apiKey.isEmpty { request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "authorization") }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 else {
+            throw LLMError.failed(StreamParser.errorMessage(fromBody: String(decoding: data, as: UTF8.self), status: status))
+        }
+        return ChatCompletionsParser.modelIDs(fromBody: data)
     }
 }

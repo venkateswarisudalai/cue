@@ -33,11 +33,13 @@ The app isn't notarized yet, so the first time you open it macOS says it can't v
 developer: click **Done**, then go to **System Settings → Privacy & Security**, scroll down,
 and click **Open Anyway**.
 
-**Needs:** an Apple silicon Mac on macOS 26 (Tahoe) or later, plus either Claude Code
-(logged in) or an Anthropic API key for AI notes and suggestions.
+**Needs:** an Apple silicon Mac on macOS 26 (Tahoe) or later. For AI notes, use any of:
+a free local model (Ollama, LM Studio), your own key for OpenRouter, Groq, Gemini, OpenAI,
+Mistral, DeepSeek or Together, any OpenAI-compatible server, or Claude.
 
 ## What's new
-- Granola-style meeting notepad: your notes + Claude-written notes after the call
+- Use your own AI: free local models (Ollama, LM Studio) or your own key for OpenRouter, Groq, Gemini, OpenAI, Mistral, DeepSeek, Together, or any OpenAI-compatible server
+- Granola-style meeting notepad: your notes + AI-written notes after the call
 - Offers to start listening when a Zoom / Teams / Meet / FaceTime / Slack call begins
 - Cleaner on-device transcripts, viewable any time; optional audio recording
 - Live suggestions are optional; modes are Meeting and Customer call
