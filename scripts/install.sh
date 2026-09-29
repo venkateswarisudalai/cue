@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Installs (or updates) the latest Vantage release into /Applications.
 #
-#   curl -fsSL https://raw.githubusercontent.com/venkateswarisudalai/cue/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/venkateswarisudalai/vantage/main/scripts/install.sh | bash
 #   (run again to update)
 #
 # Installing this way skips the "Apple could not verify Vantage" prompt: the app is
 # ad-hoc signed (not notarized), and files fetched by a script aren't quarantined.
 set -euo pipefail
 
-REPO="${VANTAGE_REPO:-venkateswarisudalai/cue}"
+REPO="${VANTAGE_REPO:-venkateswarisudalai/vantage}"
 APP=/Applications/Vantage.app
 
 fail() { echo "✗ $*" >&2; exit 1; }

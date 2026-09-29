@@ -12,7 +12,7 @@ export default defineConfig({
   expect: { timeout: 30_000 },
   reporter: [['list']],
   use: {
-    baseURL: process.env.BASE_URL ?? 'http://localhost:4173/cue/',
+    baseURL: process.env.BASE_URL ?? 'http://localhost:4173/vantage/',
     // A public site calling Ollama/Whisper on localhost needs Chrome's local-network permission.
     permissions: external && process.env.BASE_URL!.startsWith('https') ? ['microphone', 'local-network-access'] : ['microphone'],
     launchOptions: {
@@ -27,7 +27,7 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
   webServer: external ? undefined : {
     command: 'npm run build && npx vite preview --port 4173 --strictPort',
-    url: 'http://localhost:4173/cue/',
+    url: 'http://localhost:4173/vantage/',
     reuseExistingServer: true,
     timeout: 120_000,
   },

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests and builds the web app, then publishes it to the gh-pages branch (GitHub Pages).
 #   scripts/deploy-web.sh
-# The site: https://venkateswarisudalai.github.io/cue/
+# The site: https://venkateswarisudalai.github.io/vantage/
 set -euo pipefail
 cd "$(dirname "$0")/../web"
 
@@ -29,4 +29,4 @@ git -C "$STAGE" -c user.name="$(git log -1 --format=%an)" -c user.email="$(git l
   commit -q -m "Deploy web app from $SHA"
 # gh-pages holds only build output, so each deploy replaces it.
 git -C "$STAGE" push -q -f "$REMOTE" gh-pages
-echo "✓ Deployed $SHA — https://venkateswarisudalai.github.io/cue/ (Pages can take a minute to update)"
+echo "✓ Deployed $SHA — https://venkateswarisudalai.github.io/vantage/ (Pages can take a minute to update)"

@@ -3,7 +3,7 @@
 The browser version of Vantage: the same meeting notepad, transcripts, AI notes, and optional
 suggestions as the Mac app, running in Chrome or Edge with no install.
 
-**Open it:** https://venkateswarisudalai.github.io/cue/
+**Open it:** https://venkateswarisudalai.github.io/vantage/
 
 ## Set up (1 minute, free)
 
@@ -47,7 +47,7 @@ IndexedDB). Audio and text go only to the providers you choose. Clearing site da
 
 ```bash
 npm ci
-npm run dev          # http://localhost:5173/cue/
+npm run dev          # http://localhost:5173/vantage/
 npm test             # unit tests (Vitest)
 npm run e2e          # end-to-end in Chromium: fake mic → local Whisper → Ollama notes (see e2e/README.md)
 e2e/linux/run.sh     # the same end-to-end suite on Linux, in Docker

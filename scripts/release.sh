@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 VERSION="${1:?usage: scripts/release.sh <version>, e.g. 1.0.0}"
-REPO="${VANTAGE_REPO:-venkateswarisudalai/cue}"
+REPO="${VANTAGE_REPO:-venkateswarisudalai/vantage}"
 TAG="v$VERSION"
 
 [ -z "$(git status --porcelain)" ] || { echo "✗ Commit or stash your changes first." >&2; exit 1; }
