@@ -1,8 +1,12 @@
 # Vantage
 
-A Granola-style meeting notepad for macOS. Vantage transcribes your calls **on your Mac**, and when the call ends Claude turns your rough notes and the transcript into clean meeting notes: topics, decisions, and action items.
+A Granola-style meeting notepad. Vantage transcribes your calls, and when the call ends an AI turns your rough notes and the transcript into clean meeting notes: topics, decisions, and action items.
 
-## Install
+| Windows · Linux · ChromeOS · any computer | Mac |
+|---|---|
+| **Web app, no install:** [venkateswarisudalai.github.io/cue](https://venkateswarisudalai.github.io/cue/) in Chrome or Edge. Add a free Gemini or Groq key in Settings. See [web/README.md](web/README.md). | **Native app** (below): on-device speech, call detection, menu bar. |
+
+## Install on Mac
 
 **One command** (downloads the latest release into /Applications and opens it):
 
