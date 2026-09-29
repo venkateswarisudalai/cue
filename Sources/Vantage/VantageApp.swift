@@ -22,6 +22,10 @@ enum Entry {
             let path = args[i + 1]
             SelfTest.runAndExit { try await SelfTest.record(path: path) }
         }
+        if let i = args.firstIndex(of: "--selftest-e2e"), i + 1 < args.count {
+            let path = args[i + 1]
+            SelfTest.runAndExit { try await SelfTest.endToEnd(path: path) }
+        }
         if args.contains("--selftest-mic-users") {
             SelfTest.runAndExit { try await SelfTest.micUsers() }
         }
@@ -247,6 +251,42 @@ enum SelfTest {
         let still = show("after")
         print("detected own mic use: \(seen), released: \(!still)")
         guard seen, !still else { throw LLMError.failed("mic use not reported by CoreAudio") }
+    }
+
+    /// The whole product minus the microphone: an audio file is transcribed on-device as call
+    /// audio, then the configured AI backend writes notes and one live suggestion.
+    @MainActor
+    static func endToEnd(path: String) async throws {
+        let model = AppModel(loadSaved: false)
+        print("backend: \(try LLMFactory.make().displayName)")
+        let started = Date()
+        try await model.runSimulation(file: URL(fileURLWithPath: path), echo: false)
+        print("\n=== TRANSCRIPT (\(model.utterances.count) lines, \(String(format: "%.0f", Date().timeIntervalSince(started)))s) ===")
+        print(PromptBuilder.formatTranscript(model.utterances))
+        guard model.hasTranscript else { throw LLMError.failed("transcription produced nothing") }
+
+        let notesStart = Date()
+        model.generateNotes()
+        var waited = 0.0
+        while model.enhancing, waited < 600 {
+            try await Task.sleep(for: .milliseconds(250))
+            waited += 0.25
+        }
+        if let error = model.errorMessage { throw LLMError.failed(error) }
+        print("\n=== NOTES (\(String(format: "%.1f", Date().timeIntervalSince(notesStart)))s) — title: \(model.current.displayTitle) ===")
+        print(model.current.enhancedNotes)
+        guard !model.current.enhancedNotes.isEmpty else { throw LLMError.failed("no notes were written") }
+
+        model.requestCue(.ask)
+        waited = 0
+        while model.cues.contains(where: { $0.state == .streaming }), waited < 300 {
+            try await Task.sleep(for: .milliseconds(250))
+            waited += 0.25
+        }
+        guard let cue = model.cues.first else { throw LLMError.failed("no suggestion card") }
+        print("\n=== SUGGESTION: \(cue.title) — \(cue.state) ===\n\(cue.text)")
+        if case .failed(let message) = cue.state { throw LLMError.failed(message) }
+        print("\nE2E OK")
     }
 
     /// Real post-meeting notes from a short sample transcript via your backend.
