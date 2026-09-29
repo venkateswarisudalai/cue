@@ -13,7 +13,8 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     baseURL: process.env.BASE_URL ?? 'http://localhost:4173/cue/',
-    permissions: ['microphone'],
+    // A public site calling Ollama/Whisper on localhost needs Chrome's local-network permission.
+    permissions: external && process.env.BASE_URL!.startsWith('https') ? ['microphone', 'local-network-access'] : ['microphone'],
     launchOptions: {
       args: [
         '--use-fake-ui-for-media-stream',
