@@ -1,6 +1,7 @@
 import AppKit
 import VantageCore
 import PDFKit
+import ServiceManagement
 import SwiftUI
 
 struct SettingsView: View {
@@ -11,6 +12,9 @@ struct SettingsView: View {
     @AppStorage(Pref.saveSessions) private var saveSessions = true
     @AppStorage(Pref.recordAudio) private var recordAudio = false
     @AppStorage(Pref.autoEnhance) private var autoEnhance = true
+    @AppStorage(Pref.detectMeetings) private var detectMeetings = true
+    @State private var openAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var loginError = ""
 
     @State private var apiKey = ""
     @State private var keySaved = Keychain.read() != nil
@@ -57,6 +61,19 @@ struct SettingsView: View {
                 LabeledContent("Language", value: Locale.current.identifier)
             }
 
+            Section("Call detection") {
+                Toggle("Offer to start listening when a call starts", isOn: $detectMeetings)
+                Text("When Zoom, Teams, Webex, FaceTime, Slack, or a browser call starts using the microphone, "
+                     + "Vantage shows a notification asking whether to start. It never starts listening on its own, "
+                     + "and it only checks which apps use the mic, never what they hear.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Toggle("Open Vantage at login", isOn: $openAtLogin)
+                    .onChange(of: openAtLogin) { setOpenAtLogin(openAtLogin) }
+                if !loginError.isEmpty {
+                    Text(loginError).font(.caption).foregroundStyle(.red)
+                }
+            }
+
             Section("Recording") {
                 Toggle("Record audio while listening", isOn: $recordAudio)
                 Text("Saves an .m4a of your mic and call audio with each note; click a transcript timestamp to play from there. "
@@ -76,6 +93,16 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 520)
         .padding(.vertical, 8)
+    }
+
+    private func setOpenAtLogin(_ on: Bool) {
+        do {
+            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+            loginError = ""
+        } catch {
+            loginError = "Couldn't change login item: \(error.localizedDescription)"
+            openAtLogin = SMAppService.mainApp.status == .enabled
+        }
     }
 
     private var backendSummary: String {

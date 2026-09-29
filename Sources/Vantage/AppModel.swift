@@ -67,6 +67,10 @@ final class AppModel: ObservableObject {
 
     /// Off for self-tests, so they never touch saved meetings.
     private let persistent: Bool
+    /// Watches for calls starting in other apps and offers to listen.
+    private(set) var detection: MeetingDetection?
+    /// Reopens the main window (set by the window itself; works after it's closed).
+    var showMainWindow: (() -> Void)?
 
     init(loadSaved: Bool = true) {
         Pref.register()
@@ -82,6 +86,7 @@ final class AppModel: ObservableObject {
             current = Meeting(mode: m)
             meetings = [current] + saved
         }
+        if loadSaved { detection = MeetingDetection(model: self) }
     }
 
     var isRunning: Bool { phase == .running }

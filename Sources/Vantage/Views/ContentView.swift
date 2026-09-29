@@ -6,6 +6,7 @@ import SwiftUI
 /// behind the bottom bar, and live suggestions in an optional inspector on the right.
 struct ContentView: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.openWindow) private var openWindow
     @AppStorage(Pref.floatOnTop) private var floatOnTop = false
     @AppStorage(Pref.showSuggestions) private var showSuggestions = false
 
@@ -34,6 +35,7 @@ struct ContentView: View {
                 }
         }
         .background(WindowLevelSetter(floating: floatOnTop))
+        .onAppear { model.showMainWindow = { [openWindow] in openWindow(id: "main") } }
     }
 }
 

@@ -445,3 +445,54 @@ import Testing
         #expect(m.recordings.isEmpty && m.mode == .meeting)
     }
 }
+
+@Suite struct MeetingDetectorTests {
+    let t0 = Date(timeIntervalSince1970: 70_000)
+
+    @Test func recognizesCallAppsAndHelpers() {
+        #expect(MeetingApp.from(bundleID: "us.zoom.xos")?.name == "Zoom")
+        #expect(MeetingApp.from(bundleID: "com.google.Chrome.helper")?.promptTitle == "Call detected in Chrome")
+        #expect(MeetingApp.from(bundleID: "com.microsoft.teams2")?.promptTitle == "Teams call detected")
+        #expect(MeetingApp.from(bundleID: "com.apple.VoiceMemos") == nil)
+        #expect(MeetingApp.from(bundleID: "us.zoomer.other") == nil)
+    }
+
+    @Test func promptsOnceAfterTheMicStaysBusy() {
+        var d = MeetingDetector(confirmDelay: 3, endDelay: 12)
+        #expect(d.update(micUsers: ["us.zoom.xos"], listening: false, now: t0) == .none)
+        #expect(d.update(micUsers: ["us.zoom.xos"], listening: false, now: t0.addingTimeInterval(2)) == .none)
+        let zoom = MeetingApp.from(bundleID: "us.zoom.xos")!
+        #expect(d.update(micUsers: ["us.zoom.xos"], listening: false, now: t0.addingTimeInterval(4)) == .started(zoom))
+        #expect(d.update(micUsers: ["us.zoom.xos"], listening: false, now: t0.addingTimeInterval(30)) == .none)
+    }
+
+    @Test func ignoresQuickMicChecksAndOtherApps() {
+        var d = MeetingDetector(confirmDelay: 3, endDelay: 12)
+        #expect(d.update(micUsers: ["us.zoom.xos"], listening: false, now: t0) == .none)
+        #expect(d.update(micUsers: [], listening: false, now: t0.addingTimeInterval(14)) == .none)
+        #expect(d.update(micUsers: ["com.apple.VoiceMemos"], listening: false, now: t0.addingTimeInterval(20)) == .none)
+        #expect(d.update(micUsers: ["com.apple.VoiceMemos"], listening: false, now: t0.addingTimeInterval(40)) == .none)
+    }
+
+    @Test func doesNotOfferWhenAlreadyListening() {
+        var d = MeetingDetector(confirmDelay: 3, endDelay: 12)
+        _ = d.update(micUsers: ["us.zoom.xos"], listening: true, now: t0)
+        #expect(d.update(micUsers: ["us.zoom.xos"], listening: true, now: t0.addingTimeInterval(10)) == .none)
+        // Still reports the end so the app can offer to stop.
+        let zoom = MeetingApp.from(bundleID: "us.zoom.xos")!
+        #expect(d.update(micUsers: [], listening: true, now: t0.addingTimeInterval(23)) == .ended(zoom))
+    }
+
+    @Test func survivesBriefMicReleasesThenEnds() {
+        var d = MeetingDetector(confirmDelay: 3, endDelay: 12)
+        _ = d.update(micUsers: ["com.microsoft.teams2"], listening: false, now: t0)
+        _ = d.update(micUsers: ["com.microsoft.teams2"], listening: false, now: t0.addingTimeInterval(4))
+        #expect(d.update(micUsers: [], listening: false, now: t0.addingTimeInterval(10)) == .none)
+        #expect(d.update(micUsers: ["com.microsoft.teams2"], listening: false, now: t0.addingTimeInterval(12)) == .none)
+        let teams = MeetingApp.from(bundleID: "com.microsoft.teams2")!
+        #expect(d.update(micUsers: [], listening: false, now: t0.addingTimeInterval(25)) == .ended(teams))
+        // A new call afterwards prompts again.
+        _ = d.update(micUsers: ["com.microsoft.teams2"], listening: false, now: t0.addingTimeInterval(60))
+        #expect(d.update(micUsers: ["com.microsoft.teams2"], listening: false, now: t0.addingTimeInterval(64)) == .started(teams))
+    }
+}

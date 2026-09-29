@@ -12,6 +12,8 @@ Modes: *Meeting* and *Customer call*.
 
 The window works like a notepad (Granola-style): a sidebar of notes, your own notes while you listen, and Claude's structured notes when you stop (⌘E to regenerate). Switch between **Notes / My notes / Transcript** at the top of each note; the live transcript is also one click away in the bottom bar (⌘T). Live suggestions are optional — toggle ✨ Suggestions (⇧⌘S).
 
+**Call detection (on by default):** when Zoom, Teams, Webex, FaceTime, Slack, Discord, WhatsApp, or a browser call starts using the microphone, Vantage shows a notification: *"Zoom call detected — Start listening?"* When the call ends while you're listening, it offers to stop. It never starts on its own and only reads *which* apps use the mic (CoreAudio process list), not their audio. A menu bar icon keeps Vantage running after you close the window; Settings has *Open Vantage at login*.
+
 **Recording (optional, off by default):** click ⏺ in the bottom bar or turn it on in Settings. Mic and call audio are mixed into one `.m4a` per listening session, stored in `~/Library/Application Support/com.venka.vantage/Recordings/`. On the Transcript page, click a line's timestamp to play from there. Tell people before you record.
 
 ## Requirements
@@ -66,6 +68,7 @@ swift test                                              # unit tests
 swift build && .build/debug/Vantage --selftest-transcribe clip.aiff   # real on-device transcription
 .build/debug/Vantage --selftest-llm "Why do you want this role?"     # real streamed cue via your backend
 .build/debug/Vantage --selftest-notes                                # real post-meeting notes via your backend
+.build/debug/Vantage --selftest-mic-users                        # CoreAudio sees mic use (call detection)
 .build/debug/Vantage --selftest-record clip.aiff                     # two offset tracks → one mixed .m4a
 .build/debug/Vantage --selftest-snapshot out.png [--live] [--transcript] [--transcript-page]
 say -o clip.aiff "Can you walk me through your last outage?"      # make a test clip

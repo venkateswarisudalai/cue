@@ -22,6 +22,9 @@ enum Entry {
             let path = args[i + 1]
             SelfTest.runAndExit { try await SelfTest.record(path: path) }
         }
+        if args.contains("--selftest-mic-users") {
+            SelfTest.runAndExit { try await SelfTest.micUsers() }
+        }
         if args.contains("--selftest-notes") {
             SelfTest.runAndExit { try await SelfTest.notes() }
         }
@@ -67,6 +70,35 @@ struct VantageApp: App {
         Settings {
             SettingsView()
         }
+
+        // Keeps Vantage around (and call detection working) after the window is closed.
+        MenuBarExtra("Vantage", systemImage: model.isRunning ? "waveform.circle.fill" : "waveform") {
+            MenuBarMenu().environmentObject(model)
+        }
+    }
+}
+
+private struct MenuBarMenu: View {
+    @EnvironmentObject var model: AppModel
+    @Environment(\.openWindow) private var openWindow
+    @AppStorage(Pref.detectMeetings) private var detectMeetings = true
+
+    var body: some View {
+        Button(model.isRunning ? "Stop Listening" : "Start Listening") {
+            if model.phase == .idle { open() }
+            model.toggle()
+        }
+        .disabled(model.phase != .idle && model.phase != .running)
+        Button("Open Vantage", action: open)
+        Divider()
+        Toggle("Offer to listen when a call starts", isOn: $detectMeetings)
+        Divider()
+        Button("Quit Vantage") { NSApp.terminate(nil) }
+    }
+
+    private func open() {
+        openWindow(id: "main")
+        NSApp.activate()
     }
 }
 
@@ -191,6 +223,27 @@ enum SelfTest {
         let clip = Double(file.length) / format.sampleRate
         print(String(format: "clip %.2fs → recording %.2fs (%@)", clip, r.duration, r.file))
         guard abs(r.duration - (clip + 1.5)) < 0.5 else { throw LLMError.failed("unexpected duration") }
+    }
+
+    /// Lists processes capturing audio before and while this process holds the mic,
+    /// checking that call detection would see a mic user.
+    static func micUsers() async throws {
+        let me = getpid()
+        func show(_ label: String) -> Bool {
+            let users = MicUsage.users(excludingPID: -1)
+            print("\(label): " + (users.isEmpty ? "(none)" : users.map { "\($0.pid) \($0.bundleID ?? "-")" }.joined(separator: ", ")))
+            return users.contains { $0.pid == me }
+        }
+        _ = show("before")
+        let mic = MicCapture()
+        try mic.start()
+        try await Task.sleep(for: .seconds(1.5))
+        let seen = show("while using mic")
+        mic.stop()
+        try await Task.sleep(for: .seconds(1))
+        let still = show("after")
+        print("detected own mic use: \(seen), released: \(!still)")
+        guard seen, !still else { throw LLMError.failed("mic use not reported by CoreAudio") }
     }
 
     /// Real post-meeting notes from a short sample transcript via your backend.
