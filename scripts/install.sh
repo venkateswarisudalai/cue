@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Installs (or updates) the latest Vantage release into /Applications.
 #
-#   Public repo:   curl -fsSL https://raw.githubusercontent.com/venkateswarisudalai/cue/main/scripts/install.sh | bash
-#   Private repo:  gh release download -R venkateswarisudalai/cue -p install.sh -O - | bash
+#   curl -fsSL https://raw.githubusercontent.com/venkateswarisudalai/cue/main/scripts/install.sh | bash
+#   (run again to update)
 #
 # Installing this way skips the "Apple could not verify Vantage" prompt: the app is
 # ad-hoc signed (not notarized), and files fetched by a script aren't quarantined.
@@ -33,7 +33,7 @@ if command -v gh >/dev/null && gh release download -R "$REPO" -p 'Vantage.dmg*' 
 elif curl -fsSL -o "$tmp/Vantage.dmg" "https://github.com/$REPO/releases/latest/download/Vantage.dmg"; then
   curl -fsSL -o "$tmp/Vantage.dmg.sha256" "https://github.com/$REPO/releases/latest/download/Vantage.dmg.sha256" || true
 else
-  fail "Couldn't download Vantage. If the repo is private, install GitHub CLI and run 'gh auth login' with an account that has access."
+  fail "Couldn't download Vantage from github.com/$REPO/releases. Check your connection and try again."
 fi
 fi
 

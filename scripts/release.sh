@@ -25,7 +25,7 @@ cat > "$NOTES" <<EOF
 **One command** (installs to /Applications and opens it — no security prompt):
 
 \`\`\`bash
-gh release download -R $REPO -p install.sh -O - | bash
+curl -fsSL https://raw.githubusercontent.com/$REPO/main/scripts/install.sh | bash
 \`\`\`
 
 **Or by hand:** download **Vantage.dmg** below, open it, and drag Vantage into Applications.
