@@ -1,20 +1,30 @@
 # Vantage
 
-A native macOS app that listens to a conversation, transcribes it **on your Mac**, and uses Claude to suggest what to say and what to ask — for meetings and customer calls.
+A Granola-style meeting notepad for macOS. Vantage transcribes your calls **on your Mac**, and when the call ends Claude turns your rough notes and the transcript into clean meeting notes: topics, decisions, and action items.
 
-- **Two-sided live transcript.** Your mic is labeled *You*; whatever the Mac plays (Zoom, Meet, Teams, a browser tab) is *Them*. No speaker diarization guesswork.
-- **Auto-cue.** When the other side asks a question, a suggested answer streams in without pressing anything — no pause needed, so it keeps up with fast talkers and videos. Call audio leaking into your mic from speakers is filtered out of the *You* transcript.
-- **On demand:** ⌘1 *Answer* (or *Evaluate* in interviewer mode), ⌘2 *Ask* — the three best questions to ask right now, ⌘3 *Recap* — decisions, open questions, next steps, ⌘L ask anything about the conversation.
-- **Context notes per mode.** Paste or import (txt/pdf/rtf) your résumé + job description, an agenda, or account notes. Suggestions use those real details and write `[placeholders]` rather than inventing experience.
-- **Sessions saved as Markdown** in `~/Documents/Vantage Sessions/` when you stop.
+## Install
 
-Modes: *Meeting* and *Customer call*.
+**One command** (downloads the latest release into /Applications and opens it):
 
-The window works like a notepad (Granola-style): a sidebar of notes, your own notes while you listen, and Claude's structured notes when you stop (⌘E to regenerate). Switch between **Notes / My notes / Transcript** at the top of each note; the live transcript is also one click away in the bottom bar (⌘T). Live suggestions are optional — toggle ✨ Suggestions (⇧⌘S).
+```bash
+gh release download -R venkateswarisudalai/cue -p install.sh -O - | bash
+```
 
-**Call detection (on by default):** when Zoom, Teams, Webex, FaceTime, Slack, Discord, WhatsApp, or a browser call starts using the microphone, Vantage shows a notification: *"Zoom call detected — Start listening?"* When the call ends while you're listening, it offers to stop. It never starts on its own and only reads *which* apps use the mic (CoreAudio process list), not their audio. A menu bar icon keeps Vantage running after you close the window; Settings has *Open Vantage at login*.
+Needs the [GitHub CLI](https://cli.github.com) logged in (`gh auth login`) with access to this repo. Or download **Vantage.dmg** from [Releases](https://github.com/venkateswarisudalai/cue/releases), open it and drag Vantage into Applications. Vantage isn't notarized yet, so macOS warns the first time you open a downloaded copy: click **Done**, then **System Settings → Privacy & Security → Open Anyway**. The one-command install avoids that warning.
 
-**Recording (optional, off by default):** click ⏺ in the bottom bar or turn it on in Settings. Mic and call audio are mixed into one `.m4a` per listening session, stored in `~/Library/Application Support/com.venka.vantage/Recordings/`. On the Transcript page, click a line's timestamp to play from there. Tell people before you record.
+**You'll need:** an Apple silicon Mac on macOS 26 (Tahoe) or later, plus [Claude Code](https://claude.com/claude-code) logged in *or* an Anthropic API key (Settings → *Anthropic API key*) for notes and suggestions. Transcription works without either.
+
+**First run:** press **Start listening** and allow **Microphone** and **Screen & System Audio Recording** (the second lets Vantage hear the other side of calls; quit and reopen Vantage after granting it). Allow notifications so Vantage can offer to start when a call begins.
+
+## What it does
+
+- **Notes, not a wall of text.** A sidebar of notes; type your own rough notes while you listen. When you stop, Claude writes structured notes, keeps your points first, and names the meeting (⌘E to regenerate). Switch between **Notes / My notes / Transcript** at the top of each note.
+- **Clean, two-sided transcript.** Your mic is *You*; whatever the Mac plays (Zoom, Meet, Teams, a browser tab) is *Them*. Fillers and stutters are tidied up. The full transcript is always one click away, plus a live drawer in the bottom bar (⌘T).
+- **Offers to start when a call begins.** When Zoom, Teams, Webex, FaceTime, Slack, Discord, WhatsApp, or a browser call starts using the microphone, Vantage asks *"Zoom call detected — Start listening?"*, and offers to stop when the call ends. It never starts on its own and only checks *which* apps use the mic, not what they hear. A menu bar icon keeps it running after you close the window.
+- **Optional recording** (off by default): click ⏺ in the bottom bar. Mic and call audio are saved as one `.m4a` per session; click a transcript timestamp to play from there. Tell people before you record.
+- **Optional live suggestions** (✨ or ⇧⌘S): suggested answers when someone asks a question, questions worth asking, a recap, or ask anything (⌘L). Add context (agenda, account notes) so suggestions use real details.
+- **Modes:** *Meeting* and *Customer call*.
+- Notes are saved automatically; a Markdown copy goes to `~/Documents/Vantage Sessions/`.
 
 ## Requirements
 
@@ -24,14 +34,18 @@ The window works like a notepad (Granola-style): a sidebar of notes, your own no
   - **Claude Code** installed and logged in — Vantage runs `claude -p` with tools, MCP, and settings disabled. No key needed.
 - Xcode 26 / Swift 6.2 to build.
 
-## Build & install
+## Build from source
 
 ```bash
 scripts/build-app.sh --install      # builds dist/Vantage.app and copies it to /Applications
 scripts/build-app.sh --dmg          # also produces dist/Vantage.dmg to share
 ```
 
-First launch: right-click Vantage.app → **Open** (it's ad-hoc signed, not notarized).
+Release a new version (tests, builds the DMG, publishes a GitHub release with a checksum and `install.sh`):
+
+```bash
+scripts/release.sh 1.1.0            # or DRAFT=1 scripts/release.sh 1.1.0 to review first
+```
 
 ### Permissions
 

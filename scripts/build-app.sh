@@ -54,6 +54,7 @@ for arg in "$@"; do
       mkdir -p "$DMG_SRC"
       ditto "$APP" "$DMG_SRC/Vantage.app"
       ln -s /Applications "$DMG_SRC/Applications"
+      cp Resources/DMG-ReadMe.txt "$DMG_SRC/Read Me First.txt"
       rm -f dist/Vantage.dmg
       hdiutil create -volname Vantage -srcfolder "$DMG_SRC" -ov -format UDZO dist/Vantage.dmg >/dev/null
       ;;
