@@ -3,6 +3,7 @@ import { cueTitle, notesSystemPrompt, notesUserMessage, splitTitle, systemPrompt
 import { newId, type Speaker, type Utterance } from './core/transcript'
 import { backendFor, notReady, streamChat, type Backend } from './services/ai'
 import { Session } from './services/session'
+import { track } from './services/analytics'
 import {
   deleteRecordings, isEmpty, loadKeys, loadMeetings, loadSettings, putRecording, saveKeys, saveMeetings, saveSettings,
   type Meeting, type Settings,
@@ -110,6 +111,7 @@ export default function App() {
         text += chunk
         update(m.id, () => ({ enhancedNotes: text }))
       }
+      track('notes-written', `Notes written (${notesBackend.provider.name})`)
       const [title, body] = splitTitle(text)
       update(m.id, (x) => ({ enhancedNotes: body, title: x.title.trim() ? x.title : title ?? x.title }))
     } catch (e) {
@@ -178,6 +180,7 @@ export default function App() {
     })
     try {
       await s.start()
+      track('started-listening', `Started listening (${speech === 'browser' ? 'browser speech' : speech.provider.name}${s.hasCallAudio ? ', with call audio' : ', mic only'})`)
       session.current = s
       setCallAudio(s.hasCallAudio)
       setSessionStart(Date.now())
