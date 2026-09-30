@@ -572,6 +572,7 @@ import Testing
         #expect(ChatCompletionsParser.isRetryable(status: 503, body: ""))
         #expect(ChatCompletionsParser.isRetryable(status: 429, body: ""))
         #expect(ChatCompletionsParser.isRetryable(status: 404, body: #"{"error":{"message":"This model is no longer available to new users."}}"#))
+        #expect(ChatCompletionsParser.isRetryable(status: 404, body: #"{"error":{"message":"The model `llama-3.3-70b-versatile` does not exist or you do not have access to it."}}"#))
         #expect(!ChatCompletionsParser.isRetryable(status: 404, body: #"{"error":{"message":"not found"}}"#))
         #expect(!ChatCompletionsParser.isRetryable(status: 400, body: "API key not valid"))
     }
