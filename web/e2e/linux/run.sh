@@ -11,7 +11,8 @@ VERSION="$(node -p "require('@playwright/test/package.json').version")"
 
 TARGET="${BASE_URL:-http://localhost:4173/vantage/}"   # or the live site: BASE_URL=https://venkateswarisudalai.github.io/vantage/
 
-docker run --rm --add-host=host.docker.internal:host-gateway -e BASE_URL="$TARGET" \
+# GEMINI_KEY (optional) runs the suite against real Gemini; it's passed through, never written to disk.
+docker run --rm --add-host=host.docker.internal:host-gateway -e BASE_URL="$TARGET" -e GEMINI_KEY \
   -v "$PWD/e2e:/work/e2e:ro" -v "$PWD/playwright.config.ts:/work/playwright.config.ts:ro" \
   -w /work "mcr.microsoft.com/playwright:v${VERSION}-noble" bash -c "
     set -e

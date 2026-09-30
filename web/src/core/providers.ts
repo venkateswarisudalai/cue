@@ -17,13 +17,16 @@ export interface Provider {
   local?: boolean
   /** Speech-to-text this provider offers with the same key. */
   speech?: { model: string; style: 'openai' | 'gemini' }
+  /** Tried once if the chosen model is overloaded, rate-limited, or retired. */
+  fallbackModel?: string
 }
 
 export const PROVIDERS: Provider[] = [
   {
     id: 'gemini', name: 'Google Gemini', baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    defaultModel: 'gemini-2.5-flash', needsKey: true, keyURL: 'https://aistudio.google.com/apikey', style: 'openai', free: true,
-    speech: { model: 'gemini-2.5-flash', style: 'gemini' },
+    // "-latest" aliases: Google retires numbered models for new keys (2.5 already is).
+    defaultModel: 'gemini-flash-latest', needsKey: true, keyURL: 'https://aistudio.google.com/apikey', style: 'openai', free: true,
+    speech: { model: 'gemini-flash-lite-latest', style: 'gemini' }, fallbackModel: 'gemini-flash-lite-latest',
     note: 'Best free choice: one free key (no card) does speech and notes, and handles hour-long meetings. Google may use free-tier data to improve its products.',
   },
   {
@@ -127,6 +130,7 @@ export function explainError(status: number, body: string, p: Provider): string 
   }
   if (status === 429) return `${p.name} is rate-limiting this key (free tiers allow only so many requests per minute or day). Wait a minute and try again. (${detail})`
   if (status === 413) return `This meeting is too long for ${p.name}'s limits on this key. Try Gemini or a paid tier. (${detail})`
+  if (status === 503) return `${p.name} is overloaded right now (this is on their side and usually passes in a minute). Try again shortly. (${detail})`
   if (status === 401 || status === 403) return `${p.name} rejected the API key — check it in Settings. (${detail})`
   return detail
 }

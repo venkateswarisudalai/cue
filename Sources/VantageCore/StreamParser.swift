@@ -59,12 +59,17 @@ public enum StreamParser {
 
     /// Pulls a readable message out of a non-200 API response body.
     public static func errorMessage(fromBody body: String, status: Int) -> String {
-        if let obj = json(body),
-           let err = obj["error"] as? [String: Any],
-           let message = err["message"] as? String {
+        // Most APIs send {"error":{…}}; Google wraps it in an array: [{"error":{…}}].
+        let obj = json(body) ?? (jsonArray(body)?.first)
+        if let err = obj?["error"] as? [String: Any], let message = err["message"] as? String {
             return "HTTP \(status): \(message)"
         }
         return "HTTP \(status)" + (body.isEmpty ? "" : ": \(body.prefix(300))")
+    }
+
+    static func jsonArray(_ s: String) -> [[String: Any]]? {
+        guard let data = s.data(using: .utf8) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]
     }
 
     static func json(_ s: String) -> [String: Any]? {

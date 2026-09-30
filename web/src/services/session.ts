@@ -1,7 +1,7 @@
 // A listening session: captures the mic ("You") and, optionally, a shared tab or screen's audio
 // ("Them"), cuts speech at pauses, transcribes each piece, and folds it into the transcript.
 import { BLOCK, encodeWav, Resampler, Segmenter, rms, type Segment } from '../core/segmenter'
-import { isEcho, isLikelyHallucination, isQuestion } from '../core/text'
+import { isLikelyHallucination, lastQuestion, removeEchoSentences } from '../core/text'
 import { TranscriptAssembler, type Speaker, type Utterance } from '../core/transcript'
 import { segmentPolicy, transcribe, withRateLimitRetry, type Backend } from './ai'
 
@@ -182,24 +182,31 @@ export class Session {
 
   private commit(text: string, speaker: Speaker, at: number, endedAt: number) {
     const now = Date.now()
-    this.recentCall = this.recentCall.filter((c) => now - c.at < 20_000)
-    this.shownMic = this.shownMic.filter((m) => now - m.at < 20_000)
-    if (speaker === 'you' && isEcho(text, this.recentCall.map((c) => c.text))) return
+    // Long enough for Gemini's up-to-45 s chunks from the two sources to overlap.
+    const window = 60_000
+    this.recentCall = this.recentCall.filter((c) => now - c.at < window)
+    this.shownMic = this.shownMic.filter((m) => now - m.at < window)
+    if (speaker === 'you') {
+      // Speaker echo is judged per sentence: one chunk can hold an echo and a real reply.
+      text = removeEchoSentences(text, this.recentCall.map((c) => c.text)).kept
+      if (!text) return
+    }
     if (speaker === 'them') {
       this.recentCall.push({ text, at: now })
-      // Call audio that finished later can still explain mic lines already shown as "You".
+      // Call audio that finished later can still explain mic sentences already shown as "You".
       for (const m of [...this.shownMic]) {
-        if (isEcho(m.text, [text])) {
-          this.assembler.removeFragment(m.text, m.id)
-          this.shownMic = this.shownMic.filter((x) => x !== m)
-        }
+        const { kept, echoed } = removeEchoSentences(m.text, [text])
+        for (const sentence of echoed) this.assembler.removeFragment(sentence, m.id)
+        this.shownMic = this.shownMic.filter((x) => x !== m)
+        if (kept) this.shownMic.push({ ...m, text: kept })
       }
     }
     const id = this.assembler.append(text, speaker, at, endedAt)
     if (!id) return
     if (speaker === 'you') this.shownMic.push({ id, text, at: now })
     this.cb.onTranscript(this.assembler.utterances)
-    if (speaker !== 'you' && isQuestion(text)) this.cb.onQuestion(text)
+    const question = speaker !== 'you' ? lastQuestion(text) : null
+    if (question) this.cb.onQuestion(question)
   }
 
   private startBrowserRecognition() {

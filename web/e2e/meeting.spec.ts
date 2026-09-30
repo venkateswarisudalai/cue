@@ -1,21 +1,16 @@
 import { expect, test } from '@playwright/test'
+import { aiLabel, seed } from './providers'
 
-// Real pipeline, no API keys: speech goes to a local Whisper server ("Custom" provider) and notes
-// to local Ollama. Override with STT_URL / NOTES_MODEL when running elsewhere (e.g. Linux in Docker).
-const STT_URL = process.env.STT_URL ?? 'http://localhost:8178/v1'
-const NOTES_MODEL = process.env.NOTES_MODEL ?? 'llama3.2'
-
+// Real pipeline: by default speech goes to a local Whisper server and notes to local Ollama;
+// with GEMINI_KEY set, both go to Google Gemini (see providers.ts).
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(({ stt, model }) => {
+  await page.addInitScript((data) => {
     if (sessionStorage.getItem('seeded')) return
     sessionStorage.setItem('seeded', '1')
     localStorage.clear()
-    localStorage.setItem('vantage.settings', JSON.stringify({
-      notesProvider: 'ollama', speechProvider: 'custom', customURL: stt,
-      models: { ollama: model, custom: 'whisper-1' },
-      shareCallAudio: false, record: true, autoNotes: true, suggestions: false,
-    }))
-  }, { stt: STT_URL, model: NOTES_MODEL })
+    localStorage.setItem('vantage.settings', JSON.stringify(data.settings))
+    localStorage.setItem('vantage.keys', JSON.stringify(data.keys))
+  }, seed({ shareCallAudio: false, record: true, autoNotes: true, suggestions: false }))
 })
 
 test('a new visitor is told to set up AI', async ({ browser }) => {
@@ -41,7 +36,7 @@ test('keys can be saved, shown, hidden, and removed', async ({ page }) => {
   await expect(dialog.getByText(key)).toBeVisible()
   await dialog.getByRole('button', { name: 'Hide' }).first().click()
   await expect(dialog.getByText(key)).toBeHidden()
-  await expect(dialog.locator('section', { has: page.getByRole('heading', { name: 'Saved keys' }) }).locator('p')).toHaveText('Groq')
+  await expect(dialog.locator('section', { has: page.getByRole('heading', { name: 'Saved keys' }) }).locator('p')).toContainText('Groq')
   await dialog.getByRole('button', { name: 'Remove' }).first().click()
   await expect(dialog.getByText('gsk_••••••••WXYZ')).toBeHidden()
 })
@@ -49,7 +44,7 @@ test('keys can be saved, shown, hidden, and removed', async ({ page }) => {
 test('listen → transcript → AI notes → transcript page → suggestion → reload', async ({ page }) => {
   page.on('console', (m) => { if (m.type() === 'error') console.log('[browser]', m.text()) })
   await page.goto('./')
-  await expect(page.getByRole('button', { name: /AI: Ollama/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: aiLabel })).toBeVisible()
 
   // Settings → Test connection checks both the notes model and speech-to-text.
   await page.getByTitle(/Settings, AI and keys/).click()
@@ -64,10 +59,12 @@ test('listen → transcript → AI notes → transcript page → suggestion → 
 
   await page.getByRole('button', { name: /Start listening/ }).click()
   await expect(page.locator('.live-pill')).toBeVisible()
+  const started = Date.now()
   await page.getByTitle(/Transcript \(Ctrl/).click()
-  // Whisper lines arrive as the speaker pauses.
+  // Lines arrive as the speaker pauses (Gemini sends longer chunks, so its first line comes later).
   await expect(page.locator('.drawer .bubble').first()).toBeVisible({ timeout: 60_000 })
-  await page.waitForTimeout(40_000) // let the ~44 s clip play through once
+  // Stop once the ~44 s clip has played, before Chromium's fake mic loops back to its start.
+  await page.waitForTimeout(Math.max(0, 43_000 - (Date.now() - started)))
   await page.locator('.live-pill').click()
 
   // Notes are written automatically when listening stops.
