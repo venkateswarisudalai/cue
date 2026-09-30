@@ -35,3 +35,36 @@ describe('Gemini models', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('request timeouts', () => {
+  it('gives up on a provider that never answers, then falls back to the lighter Gemini model', async () => {
+    const { responseTimeout } = await import('./ai')
+    const saved = responseTimeout.hostedMs
+    responseTimeout.hostedMs = 50
+    const models: string[] = []
+    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => {
+      const model = JSON.parse(String(init.body)).model
+      models.push(model)
+      if (model === 'gemini-flash-latest') {
+        // Never answers until aborted.
+        return new Promise<Response>((_, reject) => init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))
+      }
+      return Promise.resolve(sse(['Recovered']))
+    }))
+    try {
+      expect(await collect(streamChat(gemini(), 'sys', 'user'))).toBe('Recovered')
+      expect(models).toEqual(['gemini-flash-latest', 'gemini-flash-lite-latest'])
+    } finally {
+      responseTimeout.hostedMs = saved
+    }
+  })
+
+  it('still lets the user cancel', async () => {
+    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) =>
+      new Promise<Response>((_, reject) => init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))))
+    const cancel = new AbortController()
+    const run = collect(streamChat(gemini(), 'sys', 'user', cancel.signal))
+    cancel.abort()
+    await expect(run).rejects.toThrow(/aborted/)
+  })
+})
