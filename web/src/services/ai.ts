@@ -47,7 +47,7 @@ async function send(url: string, init: RequestInit, b: Backend): Promise<Respons
 }
 
 /** Errors worth one more try on a lighter model: overloaded, rate-limited, or retired. */
-const retryable = (message: string) => /HTTP (429|503)|overloaded|rate-limiting|high demand|no longer available/i.test(message)
+const retryable = (message: string) => /HTTP (429|503)|overloaded|rate-limiting|high demand|no longer available|does not exist/i.test(message)
 
 /** Streams the reply text, falling back to the provider's lighter model if the first is unavailable. */
 export async function* streamChat(b: Backend, system: string, user: string, signal?: AbortSignal): AsyncGenerator<string> {

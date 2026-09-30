@@ -35,8 +35,10 @@ public struct CompatibleProvider: Identifiable, Equatable, Sendable {
                            note: "Best free choice: a free key from Google AI Studio, no card, and it handles hour-long meetings. Google may use free-tier data to improve its products.",
                            fallbackModel: "gemini-flash-lite-latest"),
         CompatibleProvider(id: "groq", name: "Groq (free tier)", baseURL: "https://api.groq.com/openai/v1",
-                           defaultModel: "llama-3.3-70b-versatile", needsKey: true, setupURL: "https://console.groq.com/keys",
-                           note: "Free key, no card, very fast open models. The free tier caps tokens per minute, so notes for long meetings can hit the limit."),
+                           // Groq retired llama-3.3-70b-versatile on 2026-08-16; gpt-oss is its recommended replacement.
+                           defaultModel: "openai/gpt-oss-120b", needsKey: true, setupURL: "https://console.groq.com/keys",
+                           note: "Free key, no card, very fast open models. The free tier caps tokens per minute, so notes for long meetings can hit the limit.",
+                           fallbackModel: "openai/gpt-oss-20b"),
         CompatibleProvider(id: "openrouter", name: "OpenRouter (free models)", baseURL: "https://openrouter.ai/api/v1",
                            defaultModel: "meta-llama/llama-3.3-70b-instruct:free", needsKey: true,
                            setupURL: "https://openrouter.ai/keys",
@@ -124,7 +126,8 @@ public enum ChatCompletionsParser {
 
     /// Worth one more try on a lighter model: overloaded, rate-limited, or retired for this key.
     public static func isRetryable(status: Int, body: String) -> Bool {
-        status == 429 || status == 503 || (status == 404 && body.localizedCaseInsensitiveContains("no longer available"))
+        status == 429 || status == 503 || (status == 404 && (body.localizedCaseInsensitiveContains("no longer available")
+                                                  || body.localizedCaseInsensitiveContains("does not exist")))
     }
 
     /// Model ids from `GET /models` (OpenAI and Ollama shape: `{"data":[{"id":...}]}`).

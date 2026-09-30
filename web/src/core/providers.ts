@@ -31,8 +31,9 @@ export const PROVIDERS: Provider[] = [
   },
   {
     id: 'groq', name: 'Groq', baseURL: 'https://api.groq.com/openai/v1',
-    defaultModel: 'llama-3.3-70b-versatile', needsKey: true, keyURL: 'https://console.groq.com/keys', style: 'openai', free: true,
-    speech: { model: 'whisper-large-v3-turbo', style: 'openai' },
+    // Groq retired llama-3.3-70b-versatile on 2026-08-16; gpt-oss is its recommended replacement.
+    defaultModel: 'openai/gpt-oss-120b', needsKey: true, keyURL: 'https://console.groq.com/keys', style: 'openai', free: true,
+    speech: { model: 'whisper-large-v3-turbo', style: 'openai' }, fallbackModel: 'openai/gpt-oss-20b',
     note: 'Free key, no card, very fast. Whisper speech-to-text included. The free tier caps tokens per minute, so notes for long meetings can hit the limit.',
   },
   {
