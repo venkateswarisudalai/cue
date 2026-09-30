@@ -2,19 +2,36 @@
 
 A Granola-style meeting notepad. Vantage transcribes your calls, and when the call ends an AI turns your rough notes and the transcript into clean meeting notes: topics, decisions, and action items. Live suggestions during the call are optional.
 
-| Windows · Linux · ChromeOS · any computer | Mac |
-|---|---|
-| **Web app, no install:** open [venkateswarisudalai.github.io/vantage](https://venkateswarisudalai.github.io/vantage/) in Chrome or Edge, then add a free Gemini or Groq key in Settings. See [web/README.md](web/README.md). | **Native app:** on-device speech, call detection, menu bar. Install below. |
+| Your computer | Use | Needs |
+|---|---|---|
+| **Windows** | [Web app](#windows) in Chrome or Edge | Windows 10 or 11 |
+| **Linux** | [Web app](#linux) in Chrome, Chromium, or Edge | Any desktop distro |
+| **ChromeOS** | [Web app](#use-it-in-the-browser) in Chrome | — |
+| **Mac** | [Native app](#mac) (on-device speech, call detection, menu bar), or the web app | Native app: Apple silicon, macOS 26 (Tahoe) or later |
 
-## Quick start (free)
+Every option needs a free AI key. Get one from [Google AI Studio](https://aistudio.google.com/apikey): it takes about a minute and needs no card.
 
-1. **Get a free AI key** from [Google AI Studio](https://aistudio.google.com/apikey). It takes about a minute and needs no card.
-2. **Open Vantage:**
-   - Web: open [the site](https://venkateswarisudalai.github.io/vantage/), then go to **⚙︎ Settings → Quick start → Google Gemini** and paste the key.
-   - Mac: install (below), then go to **Settings (⌘,) → AI → Other provider or local model → Google Gemini** and paste the key.
-3. Press **Test connection**, then **Start listening**. When you stop, your notes are written for you.
+## Install
 
-## Install on Mac
+### Windows
+
+There's nothing to download. Vantage runs in the browser.
+
+1. Open [venkateswarisudalai.github.io/vantage](https://venkateswarisudalai.github.io/vantage/) in **Chrome** or **Edge**.
+2. *Optional:* install it as an app so it opens in its own window from the Start menu and taskbar:
+   - **Edge:** **⋯ → Apps → Install this site as an app**.
+   - **Chrome:** **⋮ → Cast, save, and share → Install page as app**.
+3. Set it up as described in [Use it in the browser](#use-it-in-the-browser).
+
+To remove the installed app, right-click it in the Start menu and choose **Uninstall**. Your notes live in the browser, so they're still there next time you open the site.
+
+### Linux
+
+Same as Windows: open [the site](https://venkateswarisudalai.github.io/vantage/) in **Chrome**, **Chromium**, or **Edge**. To add it to your app launcher, use **⋮ → Cast, save, and share → Install page as app** (Chrome/Chromium) or **⋯ → Apps → Install this site as an app** (Edge). Firefox opens Vantage but can't share call audio, so only your microphone is transcribed.
+
+Then continue with [Use it in the browser](#use-it-in-the-browser).
+
+### Mac
 
 **One command** (downloads the latest release into /Applications and opens it):
 
@@ -27,6 +44,23 @@ Run the same command again to update. Or download **Vantage.dmg** from [Releases
 **Needs:** an Apple silicon Mac on macOS 26 (Tahoe) or later.
 
 **First run:** press **Start listening** and allow **Microphone** and **Screen & System Audio Recording** (the second lets Vantage hear the other side of calls; quit and reopen Vantage after granting it). Allow notifications so Vantage can offer to start when a call begins.
+
+**Add your AI key:** **Settings (⌘,) → AI → Other provider or local model → Google Gemini**, paste the key, and press **Test connection**.
+
+Prefer not to install? The web app works on the Mac too, in Chrome or Edge.
+
+## Use it in the browser
+
+1. **Open** [venkateswarisudalai.github.io/vantage](https://venkateswarisudalai.github.io/vantage/) in Chrome or Edge (or the app you installed above).
+2. **Add your key:** open **⚙︎ Settings** (Ctrl+, or ⌘,), pick **Google Gemini** under **Quick start**, and paste the key. Press **Test connection**: it checks both speech and notes.
+3. **Choose what to hear.** The **🖥 Call audio** button in the bottom bar decides whether the other side of a call is transcribed. Click it to switch to **Mic only**, which is right for in-person meetings.
+4. **Press Start listening.**
+   - Allow the **microphone** when the browser asks.
+   - With **Call audio** on, the browser then asks what to share. Pick the **tab** with your call (Google Meet, or Teams or Zoom on the web) and tick **Share tab audio**. On Windows you can instead share the **entire screen** and tick **Share system audio**, which captures desktop Zoom or Teams too.
+5. **Take notes while you listen.** Type your own rough points in the note; open the live transcript with Ctrl+J (⌘J on Mac).
+6. **Click the live pill in the bottom bar to stop.** The AI writes your notes and names the meeting. Switch between **Notes / My notes / Transcript** at the top, press Ctrl+E (⌘E) to rewrite the notes, or use **Export .txt** to save the transcript.
+
+Your notes, transcripts, and keys are saved in that browser only. Use the same browser and profile to find them again, and remember that clearing the site's data deletes them. Wear headphones so your mic doesn't pick up the other side. More detail, including local models, is in [web/README.md](web/README.md).
 
 ## Choosing an AI
 
