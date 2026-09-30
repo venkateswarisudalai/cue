@@ -30,6 +30,11 @@ type BrowserRecognition = {
 export const browserSpeechAvailable = () =>
   typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)
 
+/** After this long with no sound at all, tell the user what to check. */
+const SILENCE_CHECK_MS = 12_000
+/** Below any speech or music: digital silence or a muted source. */
+const SILENT_RMS = 0.003
+
 class Pipeline {
   private resampler: Resampler
   private segmenter: Segmenter
@@ -38,6 +43,8 @@ class Pipeline {
   private source: MediaStreamAudioSourceNode
   private onSegment: (s: Segment) => void
   private onLevel: (l: number) => void
+  /** Loudest 100 ms block so far (RMS), to tell "silent" from "quiet". */
+  peak = 0
 
   constructor(ctx: AudioContext, stream: MediaStream, policy: ReturnType<typeof segmentPolicy>,
               onSegment: (s: Segment) => void, onLevel: (l: number) => void) {
@@ -67,7 +74,9 @@ class Pipeline {
       const block = merged.slice(offset, offset + BLOCK)
       offset += BLOCK
       const at = now - (blocks - i) * 100
-      this.onLevel(Math.min(1, rms(block) * 8))
+      const level = rms(block)
+      if (level > this.peak) this.peak = level
+      this.onLevel(Math.min(1, level * 8))
       for (const seg of this.segmenter.push(block, at)) this.onSegment(seg)
     }
     this.pending = merged.slice(offset)
@@ -98,6 +107,7 @@ export class Session {
   private recentCall: { text: string; at: number }[] = []
   private shownMic: { id: string; text: string; at: number }[] = []
   private stopped = false
+  private silenceCheck?: ReturnType<typeof setTimeout>
   private opts: SessionOptions
   private cb: SessionCallbacks
 
@@ -157,6 +167,18 @@ export class Session {
       this.cb.onError('Browser speech can only hear your mic. Pick Gemini, Groq, or OpenAI for speech to transcribe call audio too.')
     }
     if (this.opts.record) this.startRecording(mic, call)
+    this.silenceCheck = setTimeout(() => this.warnIfSilent(), SILENCE_CHECK_MS)
+  }
+
+  /** Nothing to transcribe usually means the wrong tab, an unticked "Share tab audio", or a muted mic. */
+  private warnIfSilent() {
+    if (this.stopped) return
+    const [micPipe, callPipe] = this.pipelines
+    if (callPipe && this.callActive && callPipe.peak < SILENT_RMS) {
+      this.cb.onError('The shared tab is silent. Make sure the call or video is playing in the tab you shared (not muted), then press Stop and Start again if you picked the wrong tab.')
+    } else if (micPipe && !this.callActive && micPipe.peak < SILENT_RMS) {
+      this.cb.onError('Your microphone isn’t picking anything up. Check that it isn’t muted. To transcribe a call or video playing on this computer, turn on 🖥 Call audio and share that tab.')
+    }
   }
 
   private enqueue(source: 'mic' | 'call', seg: Segment) {
@@ -257,6 +279,7 @@ export class Session {
   /** Stops capture, finishes pending transcriptions, and returns the recording if one was made. */
   async stop(): Promise<{ utterances: Utterance[]; recording?: { blob: Blob; startedAt: number; durationMs: number } }> {
     this.stopped = true
+    clearTimeout(this.silenceCheck)
     this.recognition?.stop()
     this.pipelines.forEach((p) => p.stop())
     let recording: { blob: Blob; startedAt: number; durationMs: number } | undefined
