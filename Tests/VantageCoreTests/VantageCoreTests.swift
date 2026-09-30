@@ -282,6 +282,20 @@ import Testing
 }
 
 @Suite struct PromptBuilderTests {
+    @Test func leavesEmptyContextOutAndEndsWithOutputShape() {
+        #expect(!PromptBuilder.notesSystem(mode: .meeting, contextNotes: "  ").contains("context_notes"))
+        let withContext = PromptBuilder.notesSystem(mode: .meeting, contextNotes: "Agenda: launch")
+        #expect(withContext.contains("<context_notes>\nAgenda: launch\n</context_notes>"))
+        #expect(withContext.hasSuffix("or \"None recorded\""))
+        #expect(!PromptBuilder.system(mode: .meeting, contextNotes: "").contains("none provided"))
+    }
+
+    @Test func stripsEchoedPromptTags() {
+        #expect(PromptBuilder.stripPromptTags("### Decisions\n- None recorded\n<context_notes>\n(none provided)\n</context_notes>") == "### Decisions\n- None recorded")
+        #expect(PromptBuilder.stripPromptTags("- Ship it\n<contextnotes> (none provided) </contextnotes>") == "- Ship it")
+        #expect(PromptBuilder.stripPromptTags("a < b and c > d") == "a < b and c > d")
+    }
+
     let t0 = Date(timeIntervalSince1970: 1_000)
 
     @Test func formatsTranscriptWithRelativeTimestamps() {

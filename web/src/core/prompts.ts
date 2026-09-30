@@ -47,9 +47,18 @@ export function formatTranscript(utterances: Utterance[]): string {
   return lines.join('\n')
 }
 
+// Left out when empty: an empty block at the end of the prompt gets copied into the reply by small models.
 const context = (notes: string) => {
   const n = notes.trim()
-  return `<context_notes>\n${n || '(none provided)'}\n</context_notes>`
+  return n ? `Background the user wrote beforehand. Use it for facts; never copy it or its tags into your reply.\n<context_notes>\n${n}\n</context_notes>` : ''
+}
+
+/** Removes prompt blocks or tags a model echoed back (Markdown can render `context_notes` as `contextnotes`). */
+export function stripPromptTags(text: string): string {
+  return text
+    .replace(/<(context_?notes|my_?notes|transcript)>[\s\S]*?<\/\1>/gi, '')
+    .replace(/<\/?(context_?notes|my_?notes|transcript)>/gi, '')
+    .trimEnd()
 }
 
 export function systemPrompt(mode: Mode, contextNotes: string): string {
@@ -107,6 +116,8 @@ export function notesSystemPrompt(mode: Mode, contextNotes: string): string {
 
 ${roleBrief[mode]}
 
+${context(contextNotes)}
+
 Rules:
 - The user's notes show what they care about. Keep every point they wrote, in their order, expanded with the relevant detail from the transcript. Add other important points after.
 - Only facts from the transcript, the user's notes, and the context notes. Never invent names, numbers, dates, or commitments. If something is unclear, say so briefly.
@@ -120,9 +131,7 @@ Output Markdown only, in this shape:
 ### Decisions
 - bullets, or "None recorded"
 ### Action items
-- **Owner** — task (due date if said), or "None recorded"
-
-${context(contextNotes)}`
+- **Owner** — task (due date if said), or "None recorded"`
 }
 
 export function notesUserMessage(title: string, userNotes: string, utterances: Utterance[]): string {

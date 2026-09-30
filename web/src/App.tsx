@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { cueTitle, notesSystemPrompt, notesUserMessage, splitTitle, systemPrompt, userMessage, type CueKind, type Mode } from './core/prompts'
+import { cueTitle, notesSystemPrompt, notesUserMessage, splitTitle, stripPromptTags, systemPrompt, userMessage, type CueKind, type Mode } from './core/prompts'
 import { newId, type Speaker, type Utterance } from './core/transcript'
 import { backendFor, notReady, streamChat, type Backend } from './services/ai'
 import { Session } from './services/session'
@@ -109,10 +109,10 @@ export default function App() {
       for await (const chunk of streamChat(notesBackend, notesSystemPrompt(m.mode, settings.context[m.mode]),
         notesUserMessage(m.title, m.userNotes, m.utterances), abort.signal)) {
         text += chunk
-        update(m.id, () => ({ enhancedNotes: text }))
+        update(m.id, () => ({ enhancedNotes: stripPromptTags(text) }))
       }
       track('notes-written', `Notes written (${notesBackend.provider.name})`)
-      const [title, body] = splitTitle(text)
+      const [title, body] = splitTitle(stripPromptTags(text))
       update(m.id, (x) => ({ enhancedNotes: body, title: x.title.trim() ? x.title : title ?? x.title }))
     } catch (e) {
       if ((e as Error).name !== 'AbortError') setError(`Couldn't write notes: ${(e as Error).message}`)
@@ -137,7 +137,7 @@ export default function App() {
       for await (const chunk of streamChat(notesBackend, systemPrompt(m.mode, settings.context[m.mode]),
         userMessage(kind, m.utterances, target, question), abort.signal)) {
         text += chunk
-        set({ text })
+        set({ text: stripPromptTags(text) })
       }
       set({ state: 'done' })
     } catch (e) {

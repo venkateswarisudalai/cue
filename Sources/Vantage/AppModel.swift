@@ -193,7 +193,7 @@ final class AppModel: ObservableObject {
                 for try await chunk in client.stream(system: system, user: user, effort: effort) {
                     text += chunk
                     guard let self, self.current.id == id else { return }
-                    self.current.enhancedNotes = text
+                    self.current.enhancedNotes = PromptBuilder.stripPromptTags(text)
                 }
                 guard let self, self.current.id == id else { return }
                 self.finishNotes(text)
@@ -218,7 +218,7 @@ final class AppModel: ObservableObject {
 
     private func finishNotes(_ text: String) {
         enhancing = false
-        var body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var body = PromptBuilder.stripPromptTags(text).trimmingCharacters(in: .whitespacesAndNewlines)
         // The first "# heading" is Claude's title; use it if the user didn't name the meeting.
         if let title = Meeting.suggestedTitle(fromNotes: body) {
             if current.title.trimmingCharacters(in: .whitespaces).isEmpty { current.title = title }
