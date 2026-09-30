@@ -96,6 +96,8 @@ async function* streamOnce(b: Backend, system: string, user: string, signal?: Ab
     url = b.baseURL.replace(/\/+$/, '').replace(/\/v1$/, '') + '/api/chat'
     body = {
       model: b.model, stream: true,
+      // Thinking models (qwen3, deepseek-r1) otherwise reason for ~40 s first: too slow for live suggestions.
+      think: false,
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       options: { temperature: 0.3, num_ctx: ollamaContextWindow(system.length + user.length) },
     }
