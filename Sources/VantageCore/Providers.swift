@@ -12,6 +12,8 @@ public struct CompatibleProvider: Identifiable, Equatable, Sendable {
     /// Where to get a key, or how to set the local server up.
     public let setupURL: String
     public let note: String
+    /// Tried once if the chosen model is overloaded, rate-limited, or retired.
+    public var fallbackModel: String? = nil
 
     public var isLocal: Bool { baseURL.contains("localhost") || baseURL.contains("127.0.0.1") }
 
@@ -28,8 +30,10 @@ public struct CompatibleProvider: Identifiable, Equatable, Sendable {
                            defaultModel: "", needsKey: false, setupURL: "https://lmstudio.ai",
                            note: "Free and fully private. Load a model in LM Studio and start its local server, then press Load models."),
         CompatibleProvider(id: "gemini", name: "Google Gemini (free tier)", baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
-                           defaultModel: "gemini-2.5-flash", needsKey: true, setupURL: "https://aistudio.google.com/apikey",
-                           note: "Best free choice: a free key from Google AI Studio, no card, and it handles hour-long meetings. Google may use free-tier data to improve its products."),
+                           // "-latest" aliases: Google retires numbered models for new keys (2.5 already is).
+                           defaultModel: "gemini-flash-latest", needsKey: true, setupURL: "https://aistudio.google.com/apikey",
+                           note: "Best free choice: a free key from Google AI Studio, no card, and it handles hour-long meetings. Google may use free-tier data to improve its products.",
+                           fallbackModel: "gemini-flash-lite-latest"),
         CompatibleProvider(id: "groq", name: "Groq (free tier)", baseURL: "https://api.groq.com/openai/v1",
                            defaultModel: "llama-3.3-70b-versatile", needsKey: true, setupURL: "https://console.groq.com/keys",
                            note: "Free key, no card, very fast open models. The free tier caps tokens per minute, so notes for long meetings can hit the limit."),
@@ -116,6 +120,11 @@ public enum ChatCompletionsParser {
             return .stop(reason: reason)
         }
         return nil
+    }
+
+    /// Worth one more try on a lighter model: overloaded, rate-limited, or retired for this key.
+    public static func isRetryable(status: Int, body: String) -> Bool {
+        status == 429 || status == 503 || (status == 404 && body.localizedCaseInsensitiveContains("no longer available"))
     }
 
     /// Model ids from `GET /models` (OpenAI and Ollama shape: `{"data":[{"id":...}]}`).

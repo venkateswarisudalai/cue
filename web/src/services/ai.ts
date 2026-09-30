@@ -46,8 +46,25 @@ async function send(url: string, init: RequestInit, b: Backend): Promise<Respons
   return res
 }
 
-/** Streams the reply text. */
+/** Errors worth one more try on a lighter model: overloaded, rate-limited, or retired. */
+const retryable = (message: string) => /HTTP (429|503)|overloaded|rate-limiting|high demand|no longer available/i.test(message)
+
+/** Streams the reply text, falling back to the provider's lighter model if the first is unavailable. */
 export async function* streamChat(b: Backend, system: string, user: string, signal?: AbortSignal): AsyncGenerator<string> {
+  const fallback = b.provider.fallbackModel
+  let started = false
+  try {
+    for await (const chunk of streamOnce(b, system, user, signal)) {
+      started = true
+      yield chunk
+    }
+  } catch (e) {
+    if (started || !fallback || fallback === b.model || signal?.aborted || !retryable((e as Error).message)) throw e
+    yield* streamOnce({ ...b, model: fallback }, system, user, signal)
+  }
+}
+
+async function* streamOnce(b: Backend, system: string, user: string, signal?: AbortSignal): AsyncGenerator<string> {
   const p = b.provider
   const headers = authHeaders(p, b.key)
   let url: string | null
@@ -136,9 +153,9 @@ export async function transcribe(b: Backend, wav: ArrayBuffer, vocabulary = '', 
   return String(j.text ?? '').trim()
 }
 
-/** Gemini transcribes with the lighter flash-lite model: much higher free-tier request limits. */
+/** Gemini transcribes with its flash-lite model: accurate, and much higher free-tier request limits. */
 export function speechModel(b: Backend): string {
-  if (b.provider.speech?.style === 'gemini') return 'gemini-2.5-flash-lite'
+  if (b.provider.speech?.style === 'gemini') return b.provider.speech.model
   return b.provider.speech?.model ?? 'whisper-1'
 }
 
@@ -158,7 +175,7 @@ export async function withRateLimitRetry<T>(run: () => Promise<T>, signal?: Abor
     try {
       return await run()
     } catch (e) {
-      const limited = /rate-limiting|HTTP 429/.test((e as Error).message)
+      const limited = /rate-limiting|HTTP (429|503)|overloaded/.test((e as Error).message)
       if (!limited || attempt >= waits.length || signal?.aborted) throw e
       await new Promise((r) => setTimeout(r, waits[attempt]))
     }

@@ -560,3 +560,24 @@ import Testing
         #expect(CompatibleProvider.find("openrouter").defaultModel.hasSuffix(":free"))
     }
 }
+
+@Suite struct GeminiModelTests {
+    @Test func usesLatestAliasesWithAFallback() {
+        let g = CompatibleProvider.find("gemini")
+        #expect(g.defaultModel == "gemini-flash-latest")
+        #expect(g.fallbackModel == "gemini-flash-lite-latest")
+    }
+
+    @Test func retriesOnlyOverloadedRateLimitedOrRetiredModels() {
+        #expect(ChatCompletionsParser.isRetryable(status: 503, body: ""))
+        #expect(ChatCompletionsParser.isRetryable(status: 429, body: ""))
+        #expect(ChatCompletionsParser.isRetryable(status: 404, body: #"{"error":{"message":"This model is no longer available to new users."}}"#))
+        #expect(!ChatCompletionsParser.isRetryable(status: 404, body: #"{"error":{"message":"not found"}}"#))
+        #expect(!ChatCompletionsParser.isRetryable(status: 400, body: "API key not valid"))
+    }
+
+    @Test func readsGooglesArrayWrappedErrors() {
+        let body = #"[{"error":{"code":503,"message":"This model is currently experiencing high demand."}}]"#
+        #expect(StreamParser.errorMessage(fromBody: body, status: 503) == "HTTP 503: This model is currently experiencing high demand.")
+    }
+}

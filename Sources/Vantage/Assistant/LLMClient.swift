@@ -169,15 +169,21 @@ struct CompatibleClient: LLMClient {
             let task = Task {
                 do {
                     let native = provider.id == "ollama"
-                    let request = native ? try makeOllamaRequest(system: system, user: user)
-                        : try makeRequest(system: system, user: user)
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
-                    let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-                    guard status == 200 else {
+                    // The chosen model, then the provider's lighter one if the first is overloaded or retired.
+                    let models = [model] + [provider.fallbackModel].compactMap { $0 }.filter { $0 != model }
+                    var stream: URLSession.AsyncBytes?
+                    for (i, candidate) in models.enumerated() {
+                        let request = native ? try makeOllamaRequest(system: system, user: user, model: candidate)
+                            : try makeRequest(system: system, user: user, model: candidate)
+                        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                        if status == 200 { stream = bytes; break }
                         var body = ""
                         for try await line in bytes.lines { body += line }
+                        if i + 1 < models.count, ChatCompletionsParser.isRetryable(status: status, body: body) { continue }
                         throw LLMError.failed(Self.explain(status: status, body: body, provider: provider))
                     }
+                    guard let bytes = stream else { throw LLMError.failed("\(provider.name) returned no response.") }
                     for try await line in bytes.lines {
                         switch native ? OllamaChat.parseLine(line) : ChatCompletionsParser.parseSSELine(line) {
                         case .text(let t): continuation.yield(t)
@@ -206,6 +212,8 @@ struct CompatibleClient: LLMClient {
                 + "Wait a minute and try again, or pick another model. (\(detail))"
         case 413:
             return "This meeting is too long for \(provider.name)'s limits on this key. Try Gemini, a paid tier, or a local model. (\(detail))"
+        case 503:
+            return "\(provider.name) is overloaded right now (on their side; it usually passes in a minute). Try again shortly. (\(detail))"
         case 401, 403:
             return "\(provider.name) rejected the API key — check it in Settings (⌘,). (\(detail))"
         case 404 where provider.id == "ollama":
@@ -215,7 +223,7 @@ struct CompatibleClient: LLMClient {
         }
     }
 
-    func makeOllamaRequest(system: String, user: String) throws -> URLRequest {
+    func makeOllamaRequest(system: String, user: String, model: String) throws -> URLRequest {
         guard let url = OllamaChat.endpoint(base: baseURL) else {
             throw LLMError.failed("Set a valid server URL for Ollama in Settings (⌘,).")
         }
@@ -233,7 +241,7 @@ struct CompatibleClient: LLMClient {
         return request
     }
 
-    func makeRequest(system: String, user: String) throws -> URLRequest {
+    func makeRequest(system: String, user: String, model: String) throws -> URLRequest {
         guard let url = CompatibleProvider.endpoint(base: baseURL, path: "/chat/completions") else {
             throw LLMError.failed("Set a valid server URL for \(provider.name) in Settings (⌘,).")
         }

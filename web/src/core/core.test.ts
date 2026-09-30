@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanTranscript, isEcho, isLikelyHallucination, isQuestion, joinFragments } from './text'
+import { cleanTranscript, isEcho, isLikelyHallucination, isQuestion, joinFragments, lastQuestion, removeEchoSentences } from './text'
 import { TranscriptAssembler } from './transcript'
 import { formatTranscript, notesUserMessage, splitTitle, systemPrompt, timestamp, userMessage } from './prompts'
 import { parseBlocks, parseInline } from './markdown'
@@ -64,10 +64,22 @@ describe('question, echo, hallucination heuristics', () => {
     expect(isQuestion('So, walk me through the migration')).toBe(true)
     expect(isQuestion('We shipped it on Friday.')).toBe(false)
   })
+  it('finds a question followed by more talk in a long chunk', () => {
+    expect(lastQuestion('Sam, can you own the rollback plan? Sure, I will write it up. Perfect.')).toBe('Sam, can you own the rollback plan?')
+    expect(lastQuestion('Anything else? We shipped. It went fine. Thanks all. See you.')).toBeNull() // too far back
+    expect(lastQuestion('We launch Thursday.')).toBeNull()
+  })
   it('flags echoes but keeps genuine replies', () => {
     const call = ['So how did you handle the database migration last year?']
     expect(isEcho('how did you handle the database migration', call)).toBe(true)
     expect(isEcho('we ran both schemas side by side for two weeks', call)).toBe(false)
+  })
+  it('removes only the echoed sentences from a long mic chunk', () => {
+    const call = ["Okay, let's get started. So the main thing today is the checkout redesign launch. Priya, where are we?"]
+    const r = removeEchoSentences('So the main thing today is the checkout redesign launch. Quick update from my side, the design review is finished.', call)
+    expect(r.kept).toBe('Quick update from my side, the design review is finished.')
+    expect(r.echoed).toHaveLength(1)
+    expect(removeEchoSentences('Yes.', call).kept).toBe('Yes.') // short replies are never treated as echo
   })
   it('drops Whisper silence hallucinations only', () => {
     expect(isLikelyHallucination('Thank you.')).toBe(true)

@@ -9,6 +9,8 @@ const COMMON_WORDS = new Set([
   'in', 'on', 'for', 'with', 'we', 'you', 'they', 'it', 'is', 'was', 'if', 'when', 'like', 'just',
 ])
 
+const sentencesOf = (text: string) => text.match(/[^.!?]+[.!?]*/g)?.map((s) => s.trim()).filter(Boolean) ?? []
+
 const core = (token: string) => token.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
 
 function capitalizeSentences(text: string): string {
@@ -118,6 +120,17 @@ export function isQuestion(text: string): boolean {
   })
 }
 
+/**
+ * The most recent question among a chunk's last few sentences, or null. Long speech chunks
+ * (Gemini's) often carry a question followed by more talk, so checking only the end misses it.
+ */
+export function lastQuestion(text: string, lookBack = 3): string | null {
+  for (const s of sentencesOf(text).slice(-lookBack).reverse()) {
+    if (isQuestion(s)) return s
+  }
+  return null
+}
+
 const wordSet = (s: string) => new Set(s.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean))
 
 /** Speakers leak call audio into the mic: does this mic text repeat recent call audio? */
@@ -130,6 +143,19 @@ export function isEcho(micText: string, recentCallText: string[], threshold = 0.
     for (const w of mic) if (call.has(w)) shared++
     return shared / mic.size >= threshold
   })
+}
+
+/**
+ * Drops the sentences of a mic transcript that repeat recent call audio, keeping the rest. Long
+ * speech chunks can hold an echo and a real reply together, so judging the whole chunk fails.
+ */
+export function removeEchoSentences(micText: string, recentCallText: string[]): { kept: string; echoed: string[] } {
+  const echoed: string[] = []
+  const kept = sentencesOf(micText).filter((s) => {
+    if (isEcho(s, recentCallText)) { echoed.push(s); return false }
+    return true
+  })
+  return { kept: kept.join(' '), echoed }
 }
 
 /** Whisper invents these on silence or noise; drop a segment that is only one of them. */

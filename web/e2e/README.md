@@ -15,3 +15,8 @@ npm run build && npx vite preview --host 0.0.0.0 --port 4173 &  e2e/linux/run.sh
 ```
 
 `STT_URL`, `NOTES_MODEL`, and `BASE_URL` override the defaults (e.g. `BASE_URL=https://venkateswarisudalai.github.io/vantage/`).
+
+**Against real Gemini:** `GEMINI_KEY=… npx playwright test --workers=1` (and the same variable for
+`e2e/linux/run.sh`) switches speech and notes to Google Gemini. One worker stays inside the free
+tier's per-minute limits. Never commit the key.
+
