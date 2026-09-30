@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { seed } from './providers'
+import { blockAnalytics, seed } from './providers'
 
 // A two-sided call: the other side arrives as shared audio ("Them") and your voice on the mic
 // ("You", from fixtures/you.wav). One mic sentence repeats the call, like speakers leaking into the
@@ -14,6 +14,7 @@ const callClip = readFileSync(fileURLToPath(new URL('./fixtures/meeting.wav', im
 
 test('two-sided call: Them + You, echo removed, auto-suggestion, notes', async ({ page }) => {
   page.on('pageerror', (e) => console.log('[pageerror]', e.message))
+  await blockAnalytics(page)
   await page.route('**/__test/call.wav', (r) => r.fulfill({ body: callClip, contentType: 'audio/wav' }))
   await page.addInitScript((data) => {
     localStorage.setItem('vantage.settings', JSON.stringify(data.settings))

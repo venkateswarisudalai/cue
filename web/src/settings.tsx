@@ -4,6 +4,7 @@ import { backendFor, listModels, notReady, speechModel, streamChat, transcribe }
 import { browserSpeechAvailable } from './services/session'
 import type { Settings } from './services/storage'
 import { encodeWav } from './core/segmenter'
+import { track } from './services/analytics'
 
 const mask = (k: string) => (k.length > 8 ? `${k.slice(0, 4)}••••••••${k.slice(-4)}` : '•'.repeat(k.length))
 
@@ -53,7 +54,7 @@ export function SettingsDialog({ settings, keys, onSettings, onKeys, onClose }: 
 
   const setKey = (id: string, v: string) => {
     const next = { ...keys }
-    if (v) next[id] = v; else delete next[id]
+    if (v) { next[id] = v; track(`saved-key-${id}`, `Saved a ${findProvider(id).name} key`) } else delete next[id]
     onKeys(next)
   }
   const notesBackend = backendFor(settings.notesProvider, settings, keys)
@@ -196,7 +197,7 @@ export function SettingsDialog({ settings, keys, onSettings, onKeys, onClose }: 
             <li><strong>Hear the other side:</strong> in Chrome or Edge, when asked to share, pick the tab with your call (Meet, Teams, Zoom web) and tick <em>Share tab audio</em>. On Windows you can share the entire screen with <em>Share system audio</em> to capture desktop apps like Zoom. Firefox and Safari can only share your mic.</li>
             <li><strong>Use headphones</strong> so your mic doesn’t pick up the other side.</li>
             <li><strong>Ollama:</strong> start it with <code>OLLAMA_ORIGINS={location.origin} ollama serve</code> so this page may talk to it.</li>
-            <li><strong>Privacy:</strong> your notes, transcripts, and keys stay in this browser. Audio and text go only to the providers you choose.</li>
+            <li><strong>Privacy:</strong> your notes, transcripts, and keys stay in this browser. Audio and text go only to the providers you choose. The site counts visits anonymously with GoatCounter (no cookies, nothing you type or say).</li>
           </ul>
         </section>
       </div>

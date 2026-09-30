@@ -44,6 +44,10 @@ Use headphones so your mic doesn't pick up the other side.
 Notes, transcripts, recordings, and API keys are stored only in your browser (localStorage and
 IndexedDB). Audio and text go only to the providers you choose. Clearing site data deletes them.
 
+The site counts visits anonymously with [GoatCounter](https://www.goatcounter.com): no cookies, no
+personal data, and none of your notes, transcripts, audio, or keys. It also counts a few moments
+(a key saved for a provider, listening started, notes written) to show whether people get set up.
+
 ## Local models (free, private)
 
 - **Ollama:** `OLLAMA_ORIGINS=https://venkateswarisudalai.github.io ollama serve`, then pick Ollama.

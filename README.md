@@ -104,7 +104,7 @@ Either way, a saved key appears masked (`sk-a••••••••9xQf`) with
 ## Privacy
 
 - **Mac:** audio never leaves the Mac. Transcription is Apple's on-device model, and recordings (if on) are local files.
-- **Web:** audio goes to the speech provider you pick. Notes, transcripts, recordings, and keys stay in your browser.
+- **Web:** audio goes to the speech provider you pick. Notes, transcripts, recordings, and keys stay in your browser. The site counts visits anonymously with [GoatCounter](https://www.goatcounter.com) (no cookies, no personal data), plus a few moments such as "started listening", never anything you type or say.
 - **Both:** transcript text and your context notes go only to the AI provider you choose, and only when notes or a suggestion are requested. With Ollama or LM Studio, nothing leaves your computer.
 
 Tell people when you're transcribing or recording a conversation, and follow the rules of the meeting you're in.
@@ -162,6 +162,12 @@ scripts/deploy-web.sh                             # publish to GitHub Pages
 ```
 
 **Never commit API keys.** Tests read them from environment variables only.
+
+### Visitor stats
+
+The web app counts visits with GoatCounter, cookie-free. The dashboard shows visitors, countries, operating systems (Windows / Linux / Mac), browsers, and referrers, plus these events: `saved-key-<provider>`, `started-listening`, `notes-written`. The site code lives in `web/.env.production` (`VITE_GOATCOUNTER=…`); builds without it include no analytics. Local builds and the end-to-end tests are never counted. Open the site once with `#toggle-goatcounter` at the end of the URL to stop counting your own visits in that browser.
+
+Mac downloads: `gh api repos/venkateswarisudalai/vantage/releases -q '.[] | .tag_name + ": " + ([.assets[] | select(.name == "Vantage.dmg") | .download_count] | tostring)'`
 
 ### Permissions (Mac)
 

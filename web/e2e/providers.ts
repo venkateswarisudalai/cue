@@ -7,6 +7,10 @@ const NOTES_MODEL = process.env.NOTES_MODEL ?? 'llama3.2'
 export const usingGemini = !!GEMINI_KEY
 export const aiLabel = usingGemini ? /AI: Google Gemini/ : /AI: Ollama/
 
+/** Keeps test runs out of the site's visitor counts. */
+export const blockAnalytics = (page: { route(url: string, handler: (r: { abort(): Promise<void> }) => unknown): Promise<unknown> }) =>
+  page.route('https://gc.zgo.at/**', (r) => r.abort())
+
 /** Settings + keys to put in localStorage before the app loads. */
 export function seed(extra: Record<string, unknown>) {
   const base = usingGemini

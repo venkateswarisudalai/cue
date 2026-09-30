@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test'
-import { aiLabel, seed } from './providers'
+import { aiLabel, blockAnalytics, seed } from './providers'
 
 // Real pipeline: by default speech goes to a local Whisper server and notes to local Ollama;
 // with GEMINI_KEY set, both go to Google Gemini (see providers.ts).
 test.beforeEach(async ({ page }) => {
+  await blockAnalytics(page)
   await page.addInitScript((data) => {
     if (sessionStorage.getItem('seeded')) return
     sessionStorage.setItem('seeded', '1')
@@ -15,6 +16,7 @@ test.beforeEach(async ({ page }) => {
 
 test('a new visitor is told to set up AI', async ({ browser }) => {
   const page = await browser.newPage()
+  await blockAnalytics(page)
   await page.goto('./')
   await expect(page.getByRole('button', { name: /Set up AI/ })).toBeVisible()
   await page.getByRole('button', { name: /Set up AI/ }).click()
