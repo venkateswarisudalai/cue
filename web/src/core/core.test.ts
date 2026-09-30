@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { cleanTranscript, isEcho, isLikelyHallucination, isQuestion, joinFragments, lastQuestion, removeEchoSentences } from './text'
 import { TranscriptAssembler } from './transcript'
-import { formatTranscript, notesUserMessage, splitTitle, systemPrompt, timestamp, userMessage } from './prompts'
+import { formatTranscript, notesSystemPrompt, notesUserMessage, splitTitle, stripPromptTags, systemPrompt, timestamp, userMessage } from './prompts'
 import { parseBlocks, parseInline } from './markdown'
 import { authHeaders, endpoint, explainError, findProvider, ollamaContextWindow, PROVIDERS } from './providers'
 import { parseAnthropicLine, parseOllamaLine, parseOpenAILine } from './stream'
@@ -204,5 +204,24 @@ describe('audio segmenting', () => {
     expect(String.fromCharCode(wav.getUint8(0), wav.getUint8(1), wav.getUint8(2), wav.getUint8(3))).toBe('RIFF')
     expect(wav.getUint32(24, true)).toBe(16_000)
     expect(wav.byteLength).toBe(44 + 3200)
+  })
+})
+
+describe('prompt tags', () => {
+  it('leaves an empty context block out of the notes prompt', () => {
+    expect(notesSystemPrompt('meeting', '  ')).not.toMatch(/context_notes|none provided/)
+    expect(notesSystemPrompt('meeting', 'Agenda: launch')).toMatch(/<context_notes>\nAgenda: launch\n<\/context_notes>/)
+  })
+
+  it('ends the notes prompt with the output shape, not the context', () => {
+    expect(notesSystemPrompt('meeting', 'Agenda: launch').trimEnd()).toMatch(/None recorded"$/)
+  })
+
+  it('strips echoed prompt blocks and tags from replies', () => {
+    const echoed = '### Decisions\n- None recorded\n<context_notes>\n(none provided)\n</context_notes>'
+    expect(stripPromptTags(echoed)).toBe('### Decisions\n- None recorded')
+    expect(stripPromptTags('- Ship it\n<contextnotes> (none provided) </contextnotes>')).toBe('- Ship it')
+    expect(stripPromptTags('Use <transcript> tags')).toBe('Use  tags')
+    expect(stripPromptTags('a < b and c > d')).toBe('a < b and c > d')
   })
 })

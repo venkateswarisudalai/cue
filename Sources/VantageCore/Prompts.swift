@@ -84,10 +84,26 @@ public enum PromptBuilder {
         bracketed placeholder like [your example] instead of making one up.
         - Measured, natural tone. No superlatives or hype.
 
+        \(contextBlock(notes))
+        """
+    }
+
+    /// Left out when empty: an empty block at the end of the prompt gets copied into the reply by small models.
+    static func contextBlock(_ notes: String) -> String {
+        notes.isEmpty ? "" : """
+        Background the user wrote beforehand. Use it for facts; never copy it or its tags into your reply.
         <context_notes>
-        \(notes.isEmpty ? "(none provided)" : notes)
+        \(notes)
         </context_notes>
         """
+    }
+
+    /// Removes prompt blocks or tags a model echoed back (Markdown can render `context_notes` as `contextnotes`).
+    public static func stripPromptTags(_ text: String) -> String {
+        var t = text.replacing(#/(?is)<(context_?notes|my_?notes|transcript)>.*?</\1>/#, with: "")
+        t = t.replacing(#/(?i)</?(context_?notes|my_?notes|transcript)>/#, with: "")
+        while let last = t.last, last.isWhitespace { t.removeLast() }
+        return t
     }
 
     public static func userMessage(
@@ -151,6 +167,8 @@ public enum PromptBuilder {
 
         \(mode.roleBrief)
 
+        \(contextBlock(notes))
+
         Rules:
         - The user's notes show what they care about. Keep every point they wrote, in their order, \
         expanded with the relevant detail from the transcript. Add other important points after.
@@ -167,10 +185,6 @@ public enum PromptBuilder {
         - bullets, or "None recorded"
         ### Action items
         - **Owner** — task (due date if said), or "None recorded"
-
-        <context_notes>
-        \(notes.isEmpty ? "(none provided)" : notes)
-        </context_notes>
         """
     }
 
