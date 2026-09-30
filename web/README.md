@@ -14,6 +14,14 @@ suggestions as the Mac app, running in Chrome or Edge with no install.
 One key covers both speech-to-text and notes. Groq works the same way
 ([console.groq.com/keys](https://console.groq.com/keys)) and transcribes closer to live.
 
+With Gemini, speech is sent in 15–45 s chunks at pauses to stay inside the free daily limit, so the
+transcript updates in bursts. Vantage uses Google's `gemini-flash-latest` (notes) and
+`gemini-flash-lite-latest` (speech) and retries on the lighter one if Gemini is busy.
+
+**Your keys** are in ⚙︎ Settings: a saved key shows masked, with **Show / Hide**, **Copy**, and
+**Remove**, and **Test connection** checks both speech and notes. The sidebar's bottom line shows
+which AI is in use.
+
 | Speech-to-text | Notes & suggestions |
 |---|---|
 | Gemini (free), Groq Whisper (free), OpenAI Whisper, any OpenAI-compatible Whisper server, or the browser's built-in recognizer (Chrome/Edge, mic only, no key) | Gemini, Groq, OpenRouter `:free` models, Mistral, Ollama or LM Studio on your computer, OpenAI, Claude, DeepSeek, Together, or any OpenAI-compatible server |
@@ -43,13 +51,23 @@ IndexedDB). Audio and text go only to the providers you choose. Clearing site da
 - **Local Whisper:** `whisper-server -m ggml-base.en.bin --port 8178 --inference-path /v1/audio/transcriptions`,
   then choose *Custom* for speech with URL `http://localhost:8178/v1`.
 
+## Tested on
+
+Browser end-to-end tests pass on the live site on **macOS** and **Linux** (Ubuntu 24.04), in Chromium,
+with real Google Gemini and with local Whisper + Ollama. They cover the first run, keys, a full
+meeting, and a two-sided call. **Windows hasn't been tested yet**; it uses the same Chrome/Edge
+engine, and reports are welcome.
+
 ## Develop
 
 ```bash
 npm ci
-npm run dev          # http://localhost:5173/vantage/
-npm test             # unit tests (Vitest)
-npm run e2e          # end-to-end in Chromium: fake mic → local Whisper → Ollama notes (see e2e/README.md)
-e2e/linux/run.sh     # the same end-to-end suite on Linux, in Docker
-../scripts/deploy-web.sh   # build and publish to GitHub Pages
+npm run dev                          # http://localhost:5173/vantage/
+npm test                             # unit tests (Vitest)
+npm run e2e                          # browser end-to-end: fake mic → local Whisper → Ollama (see e2e/README.md)
+GEMINI_KEY=… npx playwright test --workers=1   # the same tests against real Gemini
+e2e/linux/run.sh                     # the same suite on Linux, in Docker (BASE_URL=… for the live site)
+../scripts/deploy-web.sh             # build and publish to GitHub Pages
 ```
+
+Never commit an API key: the tests read it from `GEMINI_KEY` only.
