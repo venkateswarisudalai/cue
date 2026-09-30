@@ -28,12 +28,26 @@ export function notReady(b: Backend, forSpeech = false): string | null {
   return null
 }
 
+/** How long to wait for a provider to start answering. Busy free tiers sometimes never do. */
+export const responseTimeout = { hostedMs: 45_000, localMs: 300_000 }
+
 async function send(url: string, init: RequestInit, b: Backend): Promise<Response> {
+  // Our own timer, chained to the caller's cancel signal; cleared once the response starts.
+  const timer = new AbortController()
+  const ms = b.provider.local ? responseTimeout.localMs : responseTimeout.hostedMs
+  let timedOut = false
+  const onAbort = () => timer.abort()
+  init.signal?.addEventListener('abort', onAbort)
+  const clock = setTimeout(() => { timedOut = true; timer.abort() }, ms)
   let res: Response
   try {
-    res = await fetch(url, init)
+    res = await fetch(url, { ...init, signal: timer.signal })
   } catch (e) {
-    if ((e as Error).name === 'AbortError') throw e
+    if (timedOut) {
+      // "overloaded" makes this retryable, so Gemini falls back to its lighter model.
+      throw new Error(`${b.provider.name} didn't answer within ${Math.round(ms / 1000)} s — it may be overloaded. Try again in a minute.`)
+    }
+    if ((e as Error).name === 'AbortError' || init.signal?.aborted) throw e
     if (b.provider.local) {
       throw new Error(
         `Couldn't reach ${b.provider.name} at ${b.baseURL}. Is it running, and does it allow this site? ` +
@@ -41,6 +55,9 @@ async function send(url: string, init: RequestInit, b: Backend): Promise<Respons
       )
     }
     throw new Error(`Couldn't reach ${b.provider.name} (network problem, or it blocked the request).`)
+  } finally {
+    clearTimeout(clock)
+    init.signal?.removeEventListener('abort', onAbort)
   }
   if (!res.ok) throw new Error(explainError(res.status, await res.text(), b.provider))
   return res
