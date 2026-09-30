@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { parseBlocks, parseInline } from './core/markdown'
 import { contextPlaceholder, formatTranscript, modeTitle, timestamp, type CueKind, type Mode } from './core/prompts'
+import { encodeShare, mailtoLink, shareText, type SharedNote } from './core/share'
 import { speakerLabel, type Speaker, type Utterance } from './core/transcript'
 import { getRecording, type Meeting } from './services/storage'
 import type { Phase } from './App'
@@ -139,6 +140,7 @@ export function MeetingView(props: {
         </div>
         {page === 'notes' && (
           <div className="enhanced">
+            {!props.enhancing && m.enhancedNotes && <NoteShare note={{ title: m.title, date: m.createdAt, notes: m.enhancedNotes }} />}
             <Markdown text={m.enhancedNotes} />
             {props.enhancing && <p className="muted working">{m.enhancedNotes ? 'Writing…' : 'Writing notes from your meeting…'}</p>}
           </div>
@@ -150,6 +152,88 @@ export function MeetingView(props: {
               : 'Write notes…\n\nPress Start listening when the meeting begins. When you stop, Vantage turns your notes and the transcript into clean meeting notes.'} />
         )}
         {page === 'transcript' && <TranscriptPage meeting={m} partial={props.partial} listening={props.listening} onSuggestReply={props.onSuggestReply} />}
+      </article>
+    </div>
+  )
+}
+
+const siteURL = () => location.origin + location.pathname
+
+const downloadMarkdown = (note: SharedNote) => {
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(new Blob([shareText(note)], { type: 'text/markdown' }))
+  a.download = `${note.title.trim() || 'Meeting'} notes.md`
+  a.click()
+}
+
+/** Share menu for finished notes: a link that carries the notes, text, email, file, or the system share sheet. */
+function NoteShare({ note }: { note: SharedNote }) {
+  const [open, setOpen] = useState(false)
+  const [msg, setMsg] = useState('')
+  const menu = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => { if (!menu.current?.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+  const done = (text: string) => { setOpen(false); setMsg(text); setTimeout(() => setMsg(''), 2500) }
+  const link = async () => siteURL() + (await encodeShare(note))
+  const copyLink = async () => { await navigator.clipboard.writeText(await link()); done('Link copied') }
+  const copyText = async () => { await navigator.clipboard.writeText(shareText(note)); done('Notes copied') }
+  const email = async () => { location.href = mailtoLink(note, await link()); setOpen(false) }
+  const systemShare = async () => {
+    setOpen(false)
+    try { await navigator.share({ title: note.title || 'Meeting notes', text: shareText(note), url: await link() }) } catch { /* dismissed */ }
+  }
+  return (
+    <div className="note-tools">
+      {msg && <span className="muted small" role="status">{msg}</span>}
+      <div className="share" ref={menu}>
+        <button className="link" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>Share ▾</button>
+        {open && (
+          <div className="share-menu" role="menu">
+            <button role="menuitem" onClick={copyLink}>🔗 Copy link<span>Read-only page. The notes are inside the link, nothing is uploaded.</span></button>
+            <button role="menuitem" onClick={copyText}>📋 Copy text<span>Paste into Slack, Teams, or a doc</span></button>
+            <button role="menuitem" onClick={email}>✉️ Email</button>
+            <button role="menuitem" onClick={() => { downloadMarkdown(note); setOpen(false) }}>⬇️ Download .md</button>
+            {'share' in navigator && <button role="menuitem" onClick={systemShare}>📤 Share…</button>}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** What someone sees when they open a shared link: the notes, read-only. */
+export function SharedNoteView({ note }: { note: SharedNote | null }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="doc-scroll shared">
+      <header className="shared-bar">
+        <a className="logo" href={siteURL()}>◆ Vantage</a>
+        <span className="badge">Read-only</span>
+        <span className="grow" />
+        {note && (
+          <>
+            <button className="link" onClick={async () => { await navigator.clipboard.writeText(shareText(note)); setCopied(true) }}>{copied ? 'Copied' : 'Copy text'}</button>
+            <button className="link" onClick={() => downloadMarkdown(note)}>Download .md</button>
+          </>
+        )}
+      </header>
+      <article className="doc">
+        {note ? (
+          <>
+            <h1 className="title">{note.title.trim() || 'Meeting notes'}</h1>
+            {note.date > 0 && <div className="chips"><span className="chip">📅 {new Date(note.date).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span></div>}
+            <div className="enhanced"><Markdown text={note.notes} /></div>
+          </>
+        ) : (
+          <p className="muted">This link is incomplete or damaged, so the notes can't be shown. Ask for the link again.</p>
+        )}
+        <p className="muted small shared-foot">
+          Shared from <a href={siteURL()}>Vantage</a>, a free meeting notepad. The notes live only inside this link; they were never uploaded.
+        </p>
       </article>
     </div>
   )

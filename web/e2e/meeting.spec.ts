@@ -76,6 +76,21 @@ test('listen → transcript → AI notes → transcript page → suggestion → 
   const notes = await page.locator('.enhanced').innerText()
   console.log('\n--- NOTES ---\n' + notes)
 
+  // Share → Copy link, then open it the way a teammate would: read-only notes, no app.
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  await page.getByRole('button', { name: 'Share ▾' }).click()
+  await page.getByRole('menuitem', { name: /Copy link/ }).click()
+  await expect(page.getByRole('status')).toHaveText('Link copied')
+  const link = await page.evaluate(() => navigator.clipboard.readText())
+  expect(link).toMatch(/\/vantage\/#note=[A-Za-z0-9_-]+$/)
+  const viewer = await page.context().newPage()
+  await viewer.goto(link)
+  await expect(viewer.getByText('Read-only')).toBeVisible()
+  await expect(viewer.locator('.enhanced .md')).toContainText(/Thursday/i)
+  await expect(viewer.getByRole('heading', { level: 1 })).toHaveText(await page.getByLabel('Title').inputValue())
+  await expect(viewer.getByRole('button', { name: /Start listening/ })).toHaveCount(0)
+  await viewer.close()
+
   // Full transcript, with the recording's player.
   await page.getByRole('tab', { name: 'Transcript' }).click()
   const transcript = await page.locator('.transcript-page').innerText()
