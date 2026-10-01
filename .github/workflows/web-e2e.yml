@@ -91,11 +91,15 @@ jobs:
         run: |
           WHISPER_BIN=$(find whisper.cpp/build -type f \( -name whisper-server -o -name whisper-server.exe \) | head -1)
           echo "whisper-server: $WHISPER_BIN   ollama: $OLLAMA_BIN"
-          "$WHISPER_BIN" -m ggml-base.en.bin --host 127.0.0.1 --port 8178 --inference-path /v1/audio/transcriptions > whisper.log 2>&1 &
+          # MSYS_NO_PATHCONV: Git Bash on Windows would rewrite "/v1/audio/transcriptions" into a file path.
+          MSYS_NO_PATHCONV=1 "$WHISPER_BIN" -m ggml-base.en.bin --host 127.0.0.1 --port 8178 --inference-path /v1/audio/transcriptions > whisper.log 2>&1 &
           "$OLLAMA_BIN" serve > ollama.log 2>&1 &
           (cd web && npx vite preview --port 4173 > preview.log 2>&1 &)
           wait_for() { for i in $(seq 1 90); do curl -s -o /dev/null "$1" && return 0; sleep 2; done; echo "timed out: $1"; tail -40 ollama.log whisper.log web/preview.log; return 1; }
           wait_for http://127.0.0.1:8178/
+          # The speech route must exist (a 404 here means the inference path was mangled).
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:8178/v1/audio/transcriptions)
+          echo "whisper /v1/audio/transcriptions -> $code"; [ "$code" != "404" ]
           wait_for http://127.0.0.1:11434/api/tags
           wait_for http://localhost:4173/vantage/
           "$OLLAMA_BIN" pull "$NOTES_MODEL"
