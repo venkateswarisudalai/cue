@@ -214,7 +214,12 @@ describe('prompt tags', () => {
   })
 
   it('ends the notes prompt with the output shape, not the context', () => {
-    expect(notesSystemPrompt('meeting', 'Agenda: launch').trimEnd()).toMatch(/None recorded"$/)
+    expect(notesSystemPrompt('meeting', 'Agenda: launch').trimEnd()).toMatch(/as many topic sections as the conversation needs\)$/)
+  })
+
+  it('asks for topic sections only, without Decisions or Action items sections', () => {
+    const shape = notesSystemPrompt('meeting', '').split('in this shape:')[1]
+    expect(shape).not.toMatch(/Decisions|Action items|None recorded/)
   })
 
   it('strips echoed prompt blocks and tags from replies', () => {

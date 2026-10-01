@@ -675,14 +675,8 @@ final class AppModel: ObservableObject {
             - Porter stays warm for **one week** as the rollback path
 
             ### Blockers
-            - Secrets rotation still open
+            - Secrets rotation still open; **You** to finish it, with the SOC 2 evidence, by **Thursday**
             - SOC 2 evidence for the change window needed before prod
-
-            ### Decisions
-            - Cut over next Tuesday with Porter as rollback
-
-            ### Action items
-            - **You** — secrets rotation + SOC 2 evidence, by **Thursday**
             """
         }
     }
