@@ -286,7 +286,9 @@ import Testing
         #expect(!PromptBuilder.notesSystem(mode: .meeting, contextNotes: "  ").contains("context_notes"))
         let withContext = PromptBuilder.notesSystem(mode: .meeting, contextNotes: "Agenda: launch")
         #expect(withContext.contains("<context_notes>\nAgenda: launch\n</context_notes>"))
-        #expect(withContext.hasSuffix("or \"None recorded\""))
+        #expect(withContext.hasSuffix("(as many topic sections as the conversation needs)"))
+        let shape = withContext.components(separatedBy: "in this shape:").last ?? ""
+        #expect(!shape.contains("Decisions") && !shape.contains("Action items") && !shape.contains("None recorded"))
         #expect(!PromptBuilder.system(mode: .meeting, contextNotes: "").contains("none provided"))
     }
 

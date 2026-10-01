@@ -1,6 +1,6 @@
 # Vantage
 
-A Granola-style meeting notepad. Vantage transcribes your calls, and when the call ends an AI turns your rough notes and the transcript into clean meeting notes: topics, decisions, and action items. Live suggestions during the call are optional.
+A Granola-style meeting notepad. Vantage transcribes your calls, and when the call ends an AI turns your rough notes and the transcript into clean meeting notes, organized by topic. Live suggestions during the call are optional.
 
 | Your computer | Use | Needs |
 |---|---|---|

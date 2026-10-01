@@ -176,15 +176,13 @@ public enum PromptBuilder {
         names, numbers, dates, or commitments. If something is unclear, say so briefly.
         - Scannable: short bullets, nested where it helps. Bold only key names, numbers, and decisions.
         - Measured, factual tone. No filler, no hype, no preamble.
+        - No separate "Decisions" or "Action items" sections: state a decision or a task (with its \
+        owner and date) in the topic it belongs to.
 
         Output Markdown only, in this shape:
         # <short title for the meeting, 3–7 words>
         ### <topic heading>
         - bullets (as many topic sections as the conversation needs)
-        ### Decisions
-        - bullets, or "None recorded"
-        ### Action items
-        - **Owner** — task (due date if said), or "None recorded"
         """
     }
 
