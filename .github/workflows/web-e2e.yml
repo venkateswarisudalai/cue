@@ -60,39 +60,23 @@ jobs:
           cmake --build whisper.cpp/build --config Release --target whisper-server -j 4
           curl -fsSL -o ggml-base.en.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
 
-      - name: Start whisper-server
-        run: |
-          BIN=$(find whisper.cpp/build -type f \( -name whisper-server -o -name whisper-server.exe \) | head -1)
-          echo "whisper-server: $BIN"
-          nohup "$BIN" -m ggml-base.en.bin --host 127.0.0.1 --port 8178 --inference-path /v1/audio/transcriptions > whisper.log 2>&1 &
-          for i in $(seq 1 60); do curl -s -o /dev/null http://127.0.0.1:8178/ && break; sleep 2; done
-          curl -s -o /dev/null -w "whisper: %{http_code}\n" http://127.0.0.1:8178/
-
-      # ---- Ollama (notes and suggestions) ----
-      - name: Install and start Ollama (Linux)
+      # ---- Ollama (notes and suggestions): install only; it's started with the tests ----
+      - name: Install Ollama (Linux)
         if: runner.os == 'Linux'
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           sudo systemctl stop ollama || true
-          nohup ollama serve > ollama.log 2>&1 &
+          echo "OLLAMA_BIN=$(command -v ollama)" >> "$GITHUB_ENV"
 
-      - name: Install and start Ollama (Windows)
+      - name: Install Ollama (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           Invoke-WebRequest -Uri https://github.com/ollama/ollama/releases/latest/download/ollama-windows-amd64.zip -OutFile ollama.zip
           Expand-Archive ollama.zip -DestinationPath ollama
-          "$PWD\ollama" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          Start-Process -FilePath "$PWD\ollama\ollama.exe" -ArgumentList serve -RedirectStandardOutput ollama.log -RedirectStandardError ollama.err -WindowStyle Hidden
+          "OLLAMA_BIN=$((Resolve-Path ollama\ollama.exe).Path -replace '\\','/')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Pull the notes model
-        run: |
-          for i in $(seq 1 60); do curl -s -o /dev/null http://127.0.0.1:11434/api/tags && break; sleep 2; done
-          ollama pull "$NOTES_MODEL"
-          # Warm it up so the first notes request doesn't time out on model load.
-          curl -s http://127.0.0.1:11434/api/chat -d "{\"model\":\"$NOTES_MODEL\",\"stream\":false,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}" > /dev/null
-
-      # ---- App + tests ----
+      # ---- App ----
       - name: Install, unit test, build
         working-directory: web
         run: |
@@ -101,12 +85,23 @@ jobs:
           npm run build
           npx playwright install --with-deps chromium
 
-      - name: End-to-end tests
-        working-directory: web
+      # One step for servers and tests: on Windows, background processes don't reliably
+      # outlive the step that started them.
+      - name: Start Whisper, Ollama, and the app, then run the end-to-end tests
         run: |
-          nohup npx vite preview --port 4173 > preview.log 2>&1 &
-          for i in $(seq 1 30); do curl -s -o /dev/null http://localhost:4173/vantage/ && break; sleep 1; done
-          npx playwright test --workers=1
+          WHISPER_BIN=$(find whisper.cpp/build -type f \( -name whisper-server -o -name whisper-server.exe \) | head -1)
+          echo "whisper-server: $WHISPER_BIN   ollama: $OLLAMA_BIN"
+          "$WHISPER_BIN" -m ggml-base.en.bin --host 127.0.0.1 --port 8178 --inference-path /v1/audio/transcriptions > whisper.log 2>&1 &
+          "$OLLAMA_BIN" serve > ollama.log 2>&1 &
+          (cd web && npx vite preview --port 4173 > preview.log 2>&1 &)
+          wait_for() { for i in $(seq 1 90); do curl -s -o /dev/null "$1" && return 0; sleep 2; done; echo "timed out: $1"; tail -40 ollama.log whisper.log web/preview.log; return 1; }
+          wait_for http://127.0.0.1:8178/
+          wait_for http://127.0.0.1:11434/api/tags
+          wait_for http://localhost:4173/vantage/
+          "$OLLAMA_BIN" pull "$NOTES_MODEL"
+          # Warm the model so the first notes request doesn't spend its timeout loading it.
+          curl -s http://127.0.0.1:11434/api/chat -d "{\"model\":\"$NOTES_MODEL\",\"stream\":false,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}" > /dev/null
+          cd web && npx playwright test --workers=1
 
       - name: Logs and report
         if: failure()
@@ -116,7 +111,6 @@ jobs:
           path: |
             whisper.log
             ollama.log
-            ollama.err
             web/preview.log
             web/test-results
           if-no-files-found: ignore
