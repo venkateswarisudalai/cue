@@ -116,8 +116,8 @@ Tell people when you're transcribing or recording a conversation, and follow the
 |---|---|
 | **macOS** (Mac app) | Unit tests, plus the full pipeline on the installed app: spoken clip → on-device transcript → notes → suggestion, with real Google Gemini, Claude, and local Ollama. Recording and call detection too. |
 | **macOS** (web, Chromium) | Browser end-to-end tests on the live site with real Gemini and with local Whisper + Ollama: first run, keys Show/Hide/Remove, a full meeting, and a two-sided call with echo removal and automatic suggestions. |
-| **Linux** (web, Ubuntu 24.04 Chromium) | The same browser end-to-end tests, in Docker, on the live site with real Gemini. |
-| **Windows** (web) | **Not tested yet**; it uses the same Chrome/Edge engine. Reports welcome. |
+| **Linux** (web, Ubuntu 24.04 Chromium) | The same browser end-to-end tests: on every pull request in GitHub Actions (local Whisper + Ollama), and in Docker against the live site with real Gemini. |
+| **Windows** (web, Chromium) | The same browser end-to-end tests on Windows (GitHub Actions `windows-latest`), with local Whisper + Ollama, on every pull request. |
 | Firefox, Safari, phones | Not tested. Firefox and Safari can't share call audio, so use mic-only mode. |
 
 ## Development

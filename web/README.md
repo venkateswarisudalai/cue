@@ -59,8 +59,8 @@ personal data, and none of your notes, transcripts, audio, or keys. It also coun
 
 Browser end-to-end tests pass on the live site on **macOS** and **Linux** (Ubuntu 24.04), in Chromium,
 with real Google Gemini and with local Whisper + Ollama. They cover the first run, keys, a full
-meeting, and a two-sided call. **Windows hasn't been tested yet**; it uses the same Chrome/Edge
-engine, and reports are welcome.
+meeting, and a two-sided call. The same tests run on **Windows** and **Linux** in GitHub Actions on every
+pull request (`.github/workflows/web-e2e.yml`), with local Whisper + Ollama.
 
 ## Develop
 
