@@ -41,10 +41,10 @@ Mistral, DeepSeek or Together, any OpenAI-compatible server, or Claude.
 
 ## What's new
 - Notes are organized by topic: decisions and tasks, with owners and dates, sit in the topic they belong to. No more empty "None recorded" sections
-- Groq works again: it now uses `openai/gpt-oss-120b`, since Groq retired the old Llama model. A retired model you saved falls back automatically
-- Gemini uses Google's current models (`gemini-flash-latest`, `gemini-flash-lite-latest`) and retries on the lighter one when busy
-- Local models are much faster for suggestions: Ollama "thinking" is turned off (`qwen3:14b`: about 7 s instead of about 50 s)
-- Fixed: prompt text like `<context_notes>` could show up at the end of notes
+- Groq works again: it now uses \`openai/gpt-oss-120b\`, since Groq retired the old Llama model. A retired model you saved falls back automatically
+- Gemini uses Google's current models (\`gemini-flash-latest\`, \`gemini-flash-lite-latest\`) and retries on the lighter one when busy
+- Local models are much faster for suggestions: Ollama "thinking" is turned off (\`qwen3:14b\`: about 7 s instead of about 50 s)
+- Fixed: prompt text like \`<context_notes>\` could show up at the end of notes
 EOF
 
 echo "▸ Publishing $TAG"
