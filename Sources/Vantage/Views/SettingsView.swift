@@ -6,6 +6,8 @@ import SwiftUI
 
 struct SettingsView: View {
     @AppStorage(Pref.provider) private var provider = Provider.auto.rawValue
+    @AppStorage(Pref.compatProvider) private var compatProviderID = "ollama"
+    @State private var geminiKeySaved = Keychain.read(Keychain.providerAccount("gemini")) != nil
     @AppStorage(Pref.model) private var modelID = Pref.defaultModel
     @AppStorage(Pref.effort) private var effort = "low"
     @AppStorage(Pref.cliPath) private var cliPath = ""
@@ -21,6 +23,30 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("Google Gemini (recommended)") {
+                KeyField(label: "Gemini API key", account: Keychain.providerAccount("gemini"),
+                         placeholder: "Paste your key", onSave: useGemini)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("One free key writes the notes and suggestions. Transcription stays on this Mac.")
+                        .foregroundStyle(.secondary)
+                    Link("Get a free key (no card) at aistudio.google.com", destination: URL(string: "https://aistudio.google.com/apikey")!)
+                }
+                .font(.caption)
+                if usingGemini {
+                    Label("Vantage is using Google Gemini", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green).font(.callout)
+                } else if geminiKeySaved {
+                    HStack {
+                        Text("Your Gemini key is saved, but Vantage is using \(currentAIName).").font(.callout)
+                        Spacer()
+                        Button("Use Gemini", action: useGemini)
+                    }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Keychain.didChange)) { _ in
+                geminiKeySaved = Keychain.read(Keychain.providerAccount("gemini")) != nil
+            }
+
             Section("AI") {
                 Picker("Use", selection: $provider) {
                     ForEach(Provider.allCases) { Text($0.title).tag($0.rawValue) }
@@ -98,6 +124,23 @@ struct SettingsView: View {
             loginError = "Couldn't change login item: \(error.localizedDescription)"
             openAtLogin = SMAppService.mainApp.status == .enabled
         }
+    }
+
+    private var usingGemini: Bool {
+        provider == Provider.compatible.rawValue && compatProviderID == "gemini" && geminiKeySaved
+    }
+
+    private var currentAIName: String {
+        provider == Provider.compatible.rawValue
+            ? CompatibleProvider.find(compatProviderID).name.components(separatedBy: " (").first ?? compatProviderID
+            : (Provider(rawValue: provider) ?? .auto).title
+    }
+
+    /// Saving a key here should mean Gemini is used; "Automatic" would otherwise prefer Claude.
+    private func useGemini() {
+        provider = Provider.compatible.rawValue
+        compatProviderID = "gemini"
+        geminiKeySaved = Keychain.read(Keychain.providerAccount("gemini")) != nil
     }
 
     private var backendSummary: String {
@@ -218,6 +261,7 @@ struct KeyField: View {
     let label: String
     let account: String
     let placeholder: String
+    var onSave: (() -> Void)? = nil
     @State private var draft = ""
     @State private var saved: String?
     @State private var revealSaved = false
@@ -271,6 +315,7 @@ struct KeyField: View {
         draft = ""
         revealDraft = false
         reload()
+        onSave?()
     }
 
     private func reload() {

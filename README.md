@@ -45,7 +45,7 @@ Run the same command again to update. Or download **Vantage.dmg** from [Releases
 
 **First run:** press **Start listening** and allow **Microphone** and **Screen & System Audio Recording** (the second lets Vantage hear the other side of calls; quit and reopen Vantage after granting it). Allow notifications so Vantage can offer to start when a call begins.
 
-**Add your AI key:** **Settings (⌘,) → AI → Other provider or local model → Google Gemini**, paste the key, and press **Test connection**.
+**Add your AI key:** open **Settings (⌘,)**, paste your Gemini key under **Google Gemini (recommended)**, and press **Save**. Vantage switches to Gemini; **Test connection** checks it.
 
 Prefer not to install? The web app works on the Mac too, in Chrome or Edge.
 
