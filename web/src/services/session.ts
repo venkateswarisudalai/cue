@@ -120,12 +120,7 @@ export class Session {
   get hasCallAudio() { return this.callActive }
 
   async start() {
-    const mic = await navigator.mediaDevices.getUserMedia({
-      // The browser's echo canceller removes call audio played from this computer.
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    })
-    this.streams.push(mic)
-
+    // Call audio first: whether it's shared decides how the mic is opened.
     let call: MediaStream | undefined
     if (this.opts.shareCallAudio) {
       try {
@@ -153,6 +148,20 @@ export class Session {
     }
     this.callActive = !!call
     this.micSpeaker = this.callActive ? 'you' : 'room'
+
+    let mic: MediaStream
+    try {
+      mic = await navigator.mediaDevices.getUserMedia({
+        // The echo canceller removes whatever this computer plays. With call audio shared that
+        // keeps the other side out of "You"; without it, it would erase a video or call playing
+        // on the speakers, which is then the only way to hear it.
+        audio: { echoCancellation: this.callActive, noiseSuppression: true, autoGainControl: true },
+      })
+    } catch (e) {
+      call?.getTracks().forEach((t) => t.stop())
+      throw e
+    }
+    this.streams.push(mic)
 
     if (this.opts.speech === 'browser') {
       this.startBrowserRecognition()
